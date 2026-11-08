@@ -1,4 +1,4 @@
-package com.independent.musicplayer.data
+package com.sonora.player.data
 
 import android.content.Context
 import org.json.JSONArray

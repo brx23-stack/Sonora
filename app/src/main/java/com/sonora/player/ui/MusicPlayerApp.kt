@@ -1,10 +1,12 @@
-package com.independent.musicplayer.ui
+package com.sonora.player.ui
 
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Build
+import android.provider.OpenableColumns
 import android.util.LruCache
 import android.util.Size
 import androidx.activity.compose.BackHandler
@@ -51,12 +53,15 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -68,6 +73,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -91,10 +97,13 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.media3.common.Player
-import com.independent.musicplayer.data.UserLibraryStore
-import com.independent.musicplayer.library.LocalMusicRepository
-import com.independent.musicplayer.model.Song
-import com.independent.musicplayer.playback.PlayerConnection
+import com.sonora.player.convert.ConversionJob
+import com.sonora.player.convert.ConversionManager
+import com.sonora.player.convert.ConversionStatus
+import com.sonora.player.data.UserLibraryStore
+import com.sonora.player.library.LocalMusicRepository
+import com.sonora.player.model.Song
+import com.sonora.player.playback.PlayerConnection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -107,7 +116,8 @@ private enum class Section(val label: String) {
     ALL("All"),
     FAVOURITES("Favourites"),
     RECENT("Recent"),
-    PLAYLISTS("Playlists")
+    PLAYLISTS("Playlists"),
+    CONVERT("Convert")
 }
 
 private data class NewPlaylistRequest(val songToAdd: Song?)
@@ -156,6 +166,8 @@ fun MusicPlayerApp(connection: PlayerConnection) {
     var playlistPickerFor by remember { mutableStateOf<Song?>(null) }
     var newPlaylistRequest by remember { mutableStateOf<NewPlaylistRequest?>(null) }
     var playlistToDelete by remember { mutableStateOf<String?>(null) }
+    var bitrate by remember { mutableIntStateOf(192) }
+    var selectedForConvert by remember { mutableStateOf(emptySet<Long>()) }
 
     fun reload() {
         scope.launch {
@@ -172,6 +184,28 @@ fun MusicPlayerApp(connection: PlayerConnection) {
     ) { result ->
         permissionGranted = result[audioPermission] == true || hasPermission(context, audioPermission)
         if (permissionGranted) reload()
+    }
+
+    // Pick any audio files (Opus voice notes, M4A, OGG, FLAC...) to convert to MP3.
+    val pickFiles = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            ConversionManager.enqueue(
+                context,
+                uris.map { it to displayNameOf(context, it) },
+                bitrate
+            )
+        }
+    }
+
+    // Show newly converted files in the library as soon as they are saved.
+    val completedConversions = ConversionManager.completedCount
+    LaunchedEffect(completedConversions) {
+        if (completedConversions > 0 && permissionGranted) {
+            delay(800)
+            reload()
+        }
     }
 
     // Rescan whenever the app comes back to the foreground so new files show up.
@@ -213,6 +247,7 @@ fun MusicPlayerApp(connection: PlayerConnection) {
             Section.PLAYLISTS -> openPlaylist
                 ?.let { name -> playlists[name].orEmpty().mapNotNull { songsById[it] } }
                 ?: emptyList()
+            Section.CONVERT -> songs.filter { it.format != "MP3" }
         }
         if (query.isBlank()) base else base.filter {
             it.title.contains(query, ignoreCase = true) ||
@@ -247,7 +282,7 @@ fun MusicPlayerApp(connection: PlayerConnection) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("YOUR MUSIC", color = Accent, style = MaterialTheme.typography.labelLarge)
+                    Text("SONORA", color = Accent, style = MaterialTheme.typography.labelLarge)
                     Text(
                         "Library",
                         color = Color.White,
@@ -301,6 +336,37 @@ fun MusicPlayerApp(connection: PlayerConnection) {
 
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 when {
+                    section == Section.CONVERT -> ConvertScreen(
+                        songs = visibleSongs,
+                        selected = selectedForConvert,
+                        bitrate = bitrate,
+                        jobs = ConversionManager.jobs,
+                        onBitrate = { bitrate = it },
+                        onToggle = { id ->
+                            selectedForConvert =
+                                if (id in selectedForConvert) selectedForConvert - id else selectedForConvert + id
+                        },
+                        onSelectAll = {
+                            selectedForConvert =
+                                if (visibleSongs.isNotEmpty() && selectedForConvert.size == visibleSongs.size) {
+                                    emptySet()
+                                } else {
+                                    visibleSongs.map { it.id }.toSet()
+                                }
+                        },
+                        onPickFiles = { pickFiles.launch(arrayOf("audio/*", "application/ogg")) },
+                        onConvertSelected = {
+                            val chosen = visibleSongs.filter { it.id in selectedForConvert }
+                            ConversionManager.enqueue(
+                                context,
+                                chosen.map { it.uri to it.displayName },
+                                bitrate
+                            )
+                            selectedForConvert = emptySet()
+                        },
+                        onClearFinished = { ConversionManager.clearFinished() }
+                    )
+
                     !permissionGranted -> InfoCard(
                         title = "Find music on this device",
                         message = "Allow audio access to scan and play your local music files.",
@@ -585,7 +651,9 @@ private fun SongRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    (if (isPlaying) "Playing • " else "") + song.artist,
+                    (if (isPlaying) "Playing • " else "") +
+                        (if (song.format.isNotEmpty()) "${song.format} • " else "") +
+                        song.artist,
                     color = Color.LightGray,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
@@ -614,6 +682,152 @@ private fun SongRow(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConvertScreen(
+    songs: List<Song>,
+    selected: Set<Long>,
+    bitrate: Int,
+    jobs: List<ConversionJob>,
+    onBitrate: (Int) -> Unit,
+    onToggle: (Long) -> Unit,
+    onSelectAll: () -> Unit,
+    onPickFiles: () -> Unit,
+    onConvertSelected: () -> Unit,
+    onClearFinished: () -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item(key = "header") {
+            Column {
+                Text("Convert to MP3", color = Color.White, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Works with Opus, M4A, AAC, OGG, FLAC, WAV and more. Keep the app open while converting.",
+                    color = Color.LightGray,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(128, 192, 256, 320).forEach { kbps ->
+                        FilterChip(
+                            selected = kbps == bitrate,
+                            onClick = { onBitrate(kbps) },
+                            label = { Text("$kbps kbps") }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onPickFiles) { Text("Choose files…") }
+                    Button(onClick = onConvertSelected, enabled = selected.isNotEmpty()) {
+                        Text("Convert ${selected.size} selected")
+                    }
+                }
+            }
+        }
+
+        if (jobs.isNotEmpty()) {
+            item(key = "jobs-header") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Conversions", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    TextButton(onClick = onClearFinished) { Text("Clear finished") }
+                }
+            }
+            items(jobs, key = { "job-${it.id}" }) { job -> JobRow(job) }
+        }
+
+        item(key = "library-header") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("From your library (${songs.size})", color = Color.White, fontWeight = FontWeight.SemiBold)
+                if (songs.isNotEmpty()) {
+                    TextButton(onClick = onSelectAll) {
+                        Text(if (selected.size == songs.size) "Clear" else "Select all")
+                    }
+                }
+            }
+        }
+
+        if (songs.isEmpty()) {
+            item(key = "library-empty") {
+                InfoCard(
+                    "Nothing to convert here",
+                    "Every song in your library is already MP3, or no audio was found. You can still use Choose files."
+                )
+            }
+        }
+
+        items(songs, key = { "song-${it.id}" }) { song ->
+            Surface(
+                color = Color.White.copy(alpha = 0.065f),
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier.fillMaxWidth().clickable { onToggle(song.id) }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(checked = song.id in selected, onCheckedChange = null)
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(song.title, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            "${song.format} • ${song.artist}",
+                            color = Color.LightGray,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun JobRow(job: ConversionJob) {
+    Surface(
+        color = Color.White.copy(alpha = 0.10f),
+        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Text(job.name, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val statusText = when (job.status) {
+                ConversionStatus.QUEUED -> "Waiting…"
+                ConversionStatus.RUNNING -> "Converting… ${(job.progress * 100).toInt()}%"
+                ConversionStatus.DONE -> "Saved to ${job.message}"
+                ConversionStatus.FAILED -> "Failed: ${job.message}"
+            }
+            Text(
+                statusText,
+                color = if (job.status == ConversionStatus.FAILED) Color(0xFFFF8A80) else Color.LightGray,
+                style = MaterialTheme.typography.bodySmall
+            )
+            if (job.status == ConversionStatus.RUNNING) {
+                Spacer(Modifier.height(6.dp))
+                LinearProgressIndicator(
+                    progress = { job.progress },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Accent
+                )
             }
         }
     }
@@ -804,6 +1018,12 @@ private suspend fun loadArtwork(context: Context, song: Song, px: Int): ImageBit
 
 private fun hasPermission(context: Context, permission: String): Boolean =
     ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+
+private fun displayNameOf(context: Context, uri: Uri): String =
+    runCatching {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+    }.getOrNull() ?: uri.lastPathSegment ?: "audio"
 
 private fun formatTime(ms: Long): String {
     val totalSeconds = (ms / 1000).coerceAtLeast(0)

@@ -1,4 +1,4 @@
-package com.independent.musicplayer.playback
+package com.sonora.player.playback
 
 import android.content.ComponentName
 import android.content.Context
@@ -14,7 +14,7 @@ import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
-import com.independent.musicplayer.model.Song
+import com.sonora.player.model.Song
 
 /**
  * Wraps a Media3 [MediaController] and exposes the playback state as Compose state,

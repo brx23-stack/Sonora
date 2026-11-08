@@ -1,9 +1,9 @@
-package com.independent.musicplayer.library
+package com.sonora.player.library
 
 import android.content.ContentUris
 import android.content.Context
 import android.provider.MediaStore
-import com.independent.musicplayer.model.Song
+import com.sonora.player.model.Song
 
 class LocalMusicRepository(private val context: Context) {
 
@@ -16,10 +16,16 @@ class LocalMusicRepository(private val context: Context) {
             MediaStore.Audio.Media.ARTIST,
             MediaStore.Audio.Media.ALBUM,
             MediaStore.Audio.Media.ALBUM_ID,
-            MediaStore.Audio.Media.DURATION
+            MediaStore.Audio.Media.DURATION,
+            MediaStore.Audio.Media.DISPLAY_NAME
         )
+        // Include every playable audio file (MP3, M4A, OPUS, OGG, FLAC, WAV, AAC...),
+        // including voice notes and recordings, but skip system ringtones and alerts.
         val selection =
-            "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media.DURATION} > 0"
+            "${MediaStore.Audio.Media.DURATION} >= 1000 AND " +
+                "${MediaStore.Audio.Media.IS_RINGTONE} = 0 AND " +
+                "${MediaStore.Audio.Media.IS_NOTIFICATION} = 0 AND " +
+                "${MediaStore.Audio.Media.IS_ALARM} = 0"
         val sortOrder = "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE ASC"
         val result = mutableListOf<Song>()
 
@@ -32,17 +38,20 @@ class LocalMusicRepository(private val context: Context) {
             val albumColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
             val albumIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
             val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+            val fileNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
 
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idColumn)
+                val title = cursor.getString(titleColumn).cleanOr("Unknown title")
                 result += Song(
                     id = id,
-                    title = cursor.getString(titleColumn).cleanOr("Unknown title"),
+                    title = title,
                     artist = cursor.getString(artistColumn).cleanOr("Unknown artist"),
                     album = cursor.getString(albumColumn).cleanOr("Unknown album"),
                     albumId = cursor.getLong(albumIdColumn),
                     durationMs = cursor.getLong(durationColumn),
-                    uri = ContentUris.withAppendedId(collection, id)
+                    uri = ContentUris.withAppendedId(collection, id),
+                    displayName = cursor.getString(fileNameColumn).cleanOr(title)
                 )
             }
         }

@@ -1,4 +1,4 @@
-package com.independent.musicplayer
+package com.sonora.player
 
 import android.graphics.Color
 import android.os.Bundle
@@ -6,9 +6,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import com.independent.musicplayer.playback.PlayerConnection
-import com.independent.musicplayer.ui.MusicPlayerApp
-import com.independent.musicplayer.ui.MusicPlayerTheme
+import com.sonora.player.playback.PlayerConnection
+import com.sonora.player.ui.MusicPlayerApp
+import com.sonora.player.ui.MusicPlayerTheme
 
 class MainActivity : ComponentActivity() {
     private lateinit var connection: PlayerConnection

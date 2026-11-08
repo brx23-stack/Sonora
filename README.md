@@ -1,4 +1,4 @@
-# Independent Music Player
+# Sonora
 
 An Android-first, offline-capable local music player starter project. The project is intentionally independent of JARVIS.
 
@@ -13,6 +13,8 @@ An Android-first, offline-capable local music player starter project. The projec
 - **Favourites**, **playlists** (create, add, remove, delete) and **recently played**,
   stored locally on the device
 - **Play next / Add to queue** from each song's menu
+- **Native playback of Opus, M4A/AAC, OGG, FLAC, WAV and MP3** (including voice notes and recordings)
+- **Convert to MP3** (128–320 kbps) from your library or any picked file; results are saved to `Music/Sonora`
 - **Album artwork** in the list and now-playing bar (Android 10+) and in the notification
 
 ## Planned next

@@ -1,4 +1,4 @@
-package com.independent.musicplayer.playback
+package com.sonora.player.playback
 
 import android.app.PendingIntent
 import android.content.Intent
@@ -7,7 +7,7 @@ import androidx.media3.common.C
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
-import com.independent.musicplayer.MainActivity
+import com.sonora.player.MainActivity
 
 class MusicPlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null

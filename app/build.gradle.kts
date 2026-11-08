@@ -5,15 +5,36 @@ plugins {
 }
 
 android {
-    namespace = "com.independent.musicplayer"
+    namespace = "com.sonora.player"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.independent.musicplayer"
+        applicationId = "com.sonora.player"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "0.2.0"
+
+        // FFmpeg natives are bundled for 64-bit ARM phones only (keeps the APK smaller).
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
+    }
+
+    packaging {
+        jniLibs {
+            pickFirsts += "**/libc++_shared.so"
+        }
+        resources {
+            excludes += setOf(
+                "META-INF/native-image/**",
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE*",
+                "META-INF/NOTICE*",
+                "META-INF/AL2.0",
+                "META-INF/LGPL2.1"
+            )
+        }
     }
 
     buildFeatures {
@@ -43,5 +64,11 @@ dependencies {
     implementation("androidx.media3:media3-session:1.5.1")
     implementation("androidx.media3:media3-ui:1.5.1")
     implementation("com.google.guava:guava:33.3.1-android")
+    // MP3 conversion (FFmpeg with the LAME encoder, via JavaCV)
+    implementation("org.bytedeco:javacv:1.5.11")
+    implementation("org.bytedeco:javacpp:1.5.11")
+    implementation("org.bytedeco:javacpp:1.5.11:android-arm64")
+    implementation("org.bytedeco:ffmpeg:7.1-1.5.11")
+    implementation("org.bytedeco:ffmpeg:7.1-1.5.11:android-arm64")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
