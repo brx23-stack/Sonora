@@ -6,9 +6,11 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.util.LruCache
 import android.util.Size
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -51,6 +53,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -74,10 +77,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -157,16 +163,21 @@ fun MusicPlayerApp(connection: PlayerConnection) {
     var songs by remember { mutableStateOf(emptyList<Song>()) }
     var loading by remember { mutableStateOf(false) }
     var permissionGranted by remember { mutableStateOf(hasPermission(context, audioPermission)) }
-    var query by remember { mutableStateOf("") }
-    var section by remember { mutableStateOf(Section.ALL) }
-    var openPlaylist by remember { mutableStateOf<String?>(null) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var section by rememberSaveable(
+        stateSaver = Saver<Section, String>(
+            save = { it.name },
+            restore = { Section.valueOf(it) }
+        )
+    ) { mutableStateOf(Section.ALL) }
+    var openPlaylist by rememberSaveable { mutableStateOf<String?>(null) }
     var favourites by remember { mutableStateOf(store.loadFavourites()) }
     var playlists by remember { mutableStateOf(store.loadPlaylists()) }
     var history by remember { mutableStateOf(store.loadHistory()) }
     var playlistPickerFor by remember { mutableStateOf<Song?>(null) }
     var newPlaylistRequest by remember { mutableStateOf<NewPlaylistRequest?>(null) }
     var playlistToDelete by remember { mutableStateOf<String?>(null) }
-    var bitrate by remember { mutableIntStateOf(192) }
+    var bitrate by rememberSaveable { mutableIntStateOf(192) }
     var selectedForConvert by remember { mutableStateOf(emptySet<Long>()) }
 
     fun reload() {
@@ -231,6 +242,14 @@ fun MusicPlayerApp(connection: PlayerConnection) {
     val songsById = remember(songs) { songs.associateBy { it.id } }
     val currentId = connection.currentMediaId?.toLongOrNull()
     val currentSong = currentId?.let { songsById[it] }
+
+    // Tell the user when a file couldn't be played and was skipped.
+    val playbackErrors = connection.playbackErrorCount
+    LaunchedEffect(playbackErrors) {
+        if (playbackErrors > 0) {
+            Toast.makeText(context, "Couldn't play that file, skipping it", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // Record play history whenever the track changes.
     LaunchedEffect(currentId) {
@@ -347,11 +366,12 @@ fun MusicPlayerApp(connection: PlayerConnection) {
                                 if (id in selectedForConvert) selectedForConvert - id else selectedForConvert + id
                         },
                         onSelectAll = {
+                            val visibleIds = visibleSongs.map { it.id }.toSet()
                             selectedForConvert =
-                                if (visibleSongs.isNotEmpty() && selectedForConvert.size == visibleSongs.size) {
-                                    emptySet()
+                                if (visibleIds.isNotEmpty() && selectedForConvert.containsAll(visibleIds)) {
+                                    selectedForConvert - visibleIds
                                 } else {
-                                    visibleSongs.map { it.id }.toSet()
+                                    selectedForConvert + visibleIds
                                 }
                         },
                         onPickFiles = { pickFiles.launch(arrayOf("audio/*", "application/ogg")) },
@@ -758,7 +778,7 @@ private fun ConvertScreen(
                 Text("From your library (${songs.size})", color = Color.White, fontWeight = FontWeight.SemiBold)
                 if (songs.isNotEmpty()) {
                     TextButton(onClick = onSelectAll) {
-                        Text(if (selected.size == songs.size) "Clear" else "Select all")
+                        Text(if (songs.all { it.id in selected }) "Clear" else "Select all")
                     }
                 }
             }
@@ -837,6 +857,33 @@ private fun JobRow(job: ConversionJob) {
 private fun NowPlayingBar(connection: PlayerConnection, song: Song?) {
     var dragging by remember { mutableStateOf(false) }
     var dragPosition by remember { mutableFloatStateOf(0f) }
+    var showSleepDialog by remember { mutableStateOf(false) }
+
+    // Count down the sleep timer; the service pauses playback itself when it expires.
+    var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+    val sleepEndsAt = connection.sleepEndsAt
+    LaunchedEffect(sleepEndsAt) {
+        while (sleepEndsAt > 0L) {
+            now = SystemClock.elapsedRealtime()
+            if (now >= sleepEndsAt) {
+                connection.onSleepTimerFinished()
+                break
+            }
+            delay(1000)
+        }
+    }
+    val sleepRemainingMs = if (sleepEndsAt > 0L) (sleepEndsAt - now).coerceAtLeast(0L) else 0L
+
+    if (showSleepDialog) {
+        SleepTimerDialog(
+            active = sleepEndsAt > 0L,
+            onPick = { minutes ->
+                connection.setSleepTimer(minutes)
+                showSleepDialog = false
+            },
+            onDismiss = { showSleepDialog = false }
+        )
+    }
     val duration = connection.durationMs.coerceAtLeast(1L).toFloat()
     val shownPosition = (if (dragging) dragPosition else connection.positionMs.toFloat()).coerceIn(0f, duration)
 
@@ -865,6 +912,21 @@ private fun NowPlayingBar(connection: PlayerConnection, song: Song?) {
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+                IconButton(onClick = { showSleepDialog = true }) {
+                    Icon(
+                        Icons.Default.Timer,
+                        contentDescription = if (sleepEndsAt > 0L) "Sleep timer on" else "Sleep timer",
+                        tint = if (sleepEndsAt > 0L) Accent else Muted
+                    )
+                }
+            }
+
+            if (sleepEndsAt > 0L) {
+                Text(
+                    "Sleep timer: pausing in ${formatTime(sleepRemainingMs)}",
+                    color = Accent,
+                    style = MaterialTheme.typography.labelSmall
+                )
             }
 
             Slider(
@@ -937,6 +999,34 @@ private fun NowPlayingBar(connection: PlayerConnection, song: Song?) {
 }
 
 @Composable
+private fun SleepTimerDialog(
+    active: Boolean,
+    onPick: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Sleep timer") },
+        text = {
+            Column {
+                listOf(15, 30, 45, 60, 90).forEach { minutes ->
+                    TextButton(onClick = { onPick(minutes) }, modifier = Modifier.fillMaxWidth()) {
+                        Text("$minutes minutes", modifier = Modifier.fillMaxWidth())
+                    }
+                }
+                if (active) {
+                    TextButton(onClick = { onPick(0) }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Turn off timer", modifier = Modifier.fillMaxWidth())
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
 private fun NewPlaylistDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
     var name by remember { mutableStateOf("") }
     AlertDialog(
@@ -969,7 +1059,7 @@ private val songsWithoutArtwork: MutableSet<String> =
 private fun Artwork(song: Song?, size: Dp) {
     val context = LocalContext.current
     val px = with(LocalDensity.current) { size.roundToPx() }
-    val bitmap by produceState<ImageBitmap?>(initialValue = null, song?.albumId, px) {
+    val bitmap by produceState<ImageBitmap?>(initialValue = null, song?.id, px) {
         value = if (song == null) null else loadArtwork(context, song, px)
     }
     Box(
@@ -996,7 +1086,8 @@ private fun Artwork(song: Song?, size: Dp) {
 private suspend fun loadArtwork(context: Context, song: Song, px: Int): ImageBitmap? {
     // Embedded-artwork thumbnails are only available through this API on Android 10+.
     if (Build.VERSION.SDK_INT < 29) return null
-    val key = "${song.albumId}-$px"
+    // Keyed per file: embedded art differs between tracks, and "Unknown album" files share an id.
+    val key = "${song.id}-$px"
     artworkCache.get(key)?.let { return it }
     if (key in songsWithoutArtwork) return null
     return withContext(Dispatchers.IO) {

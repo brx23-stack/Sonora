@@ -2,6 +2,8 @@ package com.sonora.player.playback
 
 import android.content.ComponentName
 import android.content.Context
+import android.os.Bundle
+import android.os.SystemClock
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -10,8 +12,10 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
+import androidx.media3.session.SessionResult
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import com.sonora.player.model.Song
@@ -40,9 +44,28 @@ class PlayerConnection(private val context: Context) {
     var repeatMode by mutableIntStateOf(Player.REPEAT_MODE_OFF)
         private set
 
+    /** Sleep timer deadline in [SystemClock.elapsedRealtime] terms, or 0 when no timer is set. */
+    var sleepEndsAt by mutableLongStateOf(0L)
+        private set
+
+    /** Increases each time a file can't be played and is skipped, so the UI can tell the user. */
+    var playbackErrorCount by mutableIntStateOf(0)
+        private set
+
     private val listener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
             syncFrom(player)
+        }
+
+        // A missing or corrupt file used to leave playback stuck; skip to the next track instead.
+        override fun onPlayerError(error: PlaybackException) {
+            playbackErrorCount++
+            val c = controller ?: return
+            if (c.hasNextMediaItem()) {
+                c.seekToNextMediaItem()
+                c.prepare()
+                c.play()
+            }
         }
     }
 
@@ -58,6 +81,7 @@ class PlayerConnection(private val context: Context) {
                 c.addListener(listener)
                 isConnected = true
                 syncFrom(c)
+                refreshSleepTimer()
             } catch (e: Exception) {
                 isConnected = false
             }
@@ -118,6 +142,37 @@ class PlayerConnection(private val context: Context) {
             if (c.playbackState == Player.STATE_ENDED) c.seekToDefaultPosition(0)
             c.play()
         }
+    }
+
+    /** Sets the sleep timer (minutes > 0) or cancels it (0). Playback pauses when it runs out. */
+    fun setSleepTimer(minutes: Int) {
+        val c = controller ?: return
+        val args = Bundle().apply { putInt(MusicPlaybackService.EXTRA_MINUTES, minutes) }
+        applySleepResult(c.sendCustomCommand(MusicPlaybackService.SET_SLEEP_TIMER, args))
+    }
+
+    /** Re-reads the timer from the service, e.g. after the activity was recreated. */
+    fun refreshSleepTimer() {
+        val c = controller ?: return
+        applySleepResult(c.sendCustomCommand(MusicPlaybackService.GET_SLEEP_TIMER, Bundle.EMPTY))
+    }
+
+    /** Called by the UI once the deadline has passed (the service has paused playback). */
+    fun onSleepTimerFinished() {
+        sleepEndsAt = 0L
+    }
+
+    private fun applySleepResult(future: ListenableFuture<SessionResult>) {
+        future.addListener({
+            try {
+                val result = future.get()
+                if (result.resultCode == SessionResult.RESULT_SUCCESS) {
+                    sleepEndsAt = result.extras.getLong(MusicPlaybackService.EXTRA_ENDS_AT, 0L)
+                }
+            } catch (e: Exception) {
+                // Service unavailable; leave the timer state as it was.
+            }
+        }, ContextCompat.getMainExecutor(context))
     }
 
     fun next() { controller?.seekToNext() }

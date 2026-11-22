@@ -15,12 +15,14 @@ An Android-first, offline-capable local music player starter project. The projec
 - **Play next / Add to queue** from each song's menu
 - **Native playback of Opus, M4A/AAC, OGG, FLAC, WAV and MP3** (including voice notes and recordings)
 - **Convert to MP3** (128–320 kbps) from your library or any picked file; results are saved to `Music/Sonora`
+- **Sleep timer** (15–90 min) that keeps working even if the app is closed
+- Unplayable or missing files are skipped instead of stalling playback
 - **Album artwork** in the list and now-playing bar (Android 10+) and in the notification
 
 ## Planned next
 1. Full queue editing (reorder / remove) and gapless/crossfade options
 2. Room-backed storage if playlists grow large
-3. Equalizer and sleep timer
+3. Equalizer
 4. Spotify playlist/account companion integration (subject to Spotify API eligibility and playback restrictions)
 5. Desktop edition using shared domain logic and a desktop-specific playback layer
 
