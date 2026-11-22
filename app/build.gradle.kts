@@ -12,8 +12,8 @@ android {
         applicationId = "com.sonora.player"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3.1"
+        versionCode = 4
+        versionName = "0.3.2"
 
         // FFmpeg natives are bundled for 64-bit ARM phones only (keeps the APK smaller).
         ndk {
@@ -24,6 +24,10 @@ android {
     packaging {
         jniLibs {
             pickFirsts += "**/libc++_shared.so"
+            // Compress the native libraries and let the installer unpack them (extractNativeLibs=true).
+            // Some phones (Realme/ColorOS) fail to install with "Failed to extract native libraries"
+            // when the libraries are loaded straight from the APK.
+            useLegacyPackaging = true
             // JavaCPP also ships the `ffmpeg`/`ffprobe` command-line executables. We only use the
             // JNI libraries, and these compressed non-.so files inside lib/ make some phones
             // (e.g. Realme/ColorOS) reject the APK with "Failed to extract native libraries".
