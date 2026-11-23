@@ -17,7 +17,7 @@ An Android-first, offline-capable local music player starter project. The projec
 - **Add files from storage to a playlist** (the + button inside a playlist)
 - **Native playback of Opus, M4A/AAC, OGG, FLAC, WAV and MP3** (including voice notes and recordings)
 - **Convert to MP3** (128–320 kbps) from your library or any picked file; results are saved to `Music/Sonora`
-- **Immersive Now Playing**: tap the player bar for full-screen artwork, an animated background in the artwork's colours and smooth track-change transitions
+- **Immersive Now Playing**: big cover art on top with an animated background in the artwork's colours; scroll down for the player controls and a lyrics card
 - **Live lyrics**: synchronized, scrolling lyrics (tap a line to jump to it). Look them up once online (LRCLIB) or import a `.lrc` file; they are stored on the phone and work offline
 - **Sleep timer** (15–90 min) that keeps working even if the app is closed
 - Unplayable or missing files are skipped instead of stalling playback

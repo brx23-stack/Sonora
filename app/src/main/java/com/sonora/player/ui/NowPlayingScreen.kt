@@ -85,6 +85,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -107,7 +108,7 @@ import kotlin.math.abs
 
 private val NightBase = Color(0xFF090B12)
 
-/** Full-screen "Now playing": big artwork, animated colour background and live lyrics. */
+/** Full-screen "Now playing": cover and controls on top, lyrics in a card further down the page. */
 @Composable
 fun NowPlayingScreen(connection: PlayerConnection, song: Song, onClose: () -> Unit) {
     val context = LocalContext.current
@@ -116,7 +117,8 @@ fun NowPlayingScreen(connection: PlayerConnection, song: Song, onClose: () -> Un
 
     BackHandler(onBack = onClose)
 
-    var showLyrics by rememberSaveable { mutableStateOf(false) }
+    val pageScroll = rememberScrollState()
+    val lyricsCardHeight = (LocalConfiguration.current.screenHeightDp * 0.6f).dp
     var showQueue by remember { mutableStateOf(false) }
     var showSleep by remember { mutableStateOf(false) }
     var dragging by remember { mutableStateOf(false) }
@@ -191,9 +193,11 @@ fun NowPlayingScreen(connection: PlayerConnection, song: Song, onClose: () -> Un
             modifier = Modifier
                 .fillMaxSize()
                 .systemBarsPadding()
-                .padding(horizontal = 24.dp)
         ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 IconButton(onClick = onClose) {
                     Icon(
                         Icons.Default.KeyboardArrowDown,
@@ -212,22 +216,19 @@ fun NowPlayingScreen(connection: PlayerConnection, song: Song, onClose: () -> Un
                 Spacer(Modifier.size(48.dp))
             }
 
-            BoxWithConstraints(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentAlignment = Alignment.Center
+            // Everything below the header scrolls: cover and controls first, lyrics further down.
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(pageScroll)
+                    .padding(horizontal = 24.dp)
             ) {
-                if (showLyrics) {
-                    LyricsPane(
-                        lyrics = lyrics,
-                        busy = busy,
-                        message = message,
-                        positionMs = connection.positionMs,
-                        onFind = { findOnline() },
-                        onImport = { importLauncher.launch(arrayOf("*/*")) },
-                        onSeek = { connection.seekTo(it) }
-                    )
-                } else {
-                    val side = minOf(maxWidth, maxHeight)
+                BoxWithConstraints(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val side = minOf(maxWidth, 420.dp)
                     // The cover gently grows while music plays and shrinks when paused.
                     val artScale by animateFloatAsState(
                         targetValue = if (connection.isPlaying) 1f else 0.9f,
@@ -244,129 +245,161 @@ fun NowPlayingScreen(connection: PlayerConnection, song: Song, onClose: () -> Un
                         }
                     }
                 }
-            }
 
-            Spacer(Modifier.height(16.dp))
-            Crossfade(targetState = song, animationSpec = tween(400), label = "title") { s ->
-                Column(Modifier.fillMaxWidth()) {
-                    Text(
-                        s.title,
-                        color = Color.White,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        s.artist,
-                        color = Muted,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                Spacer(Modifier.height(16.dp))
+                Crossfade(targetState = song, animationSpec = tween(400), label = "title") { s ->
+                    Column(Modifier.fillMaxWidth()) {
+                        Text(
+                            s.title,
+                            color = Color.White,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            s.artist,
+                            color = Muted,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
-            }
 
-            Slider(
-                value = shownPosition,
-                onValueChange = {
-                    dragging = true
-                    dragPosition = it
-                },
-                onValueChangeFinished = {
-                    connection.seekTo(dragPosition.toLong())
-                    dragging = false
-                },
-                valueRange = 0f..duration,
-                colors = SliderDefaults.colors(
-                    thumbColor = Color.White,
-                    activeTrackColor = Color.White,
-                    inactiveTrackColor = Color.White.copy(alpha = 0.25f)
+                Slider(
+                    value = shownPosition,
+                    onValueChange = {
+                        dragging = true
+                        dragPosition = it
+                    },
+                    onValueChangeFinished = {
+                        connection.seekTo(dragPosition.toLong())
+                        dragging = false
+                    },
+                    valueRange = 0f..duration,
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color.White,
+                        activeTrackColor = Color.White,
+                        inactiveTrackColor = Color.White.copy(alpha = 0.25f)
+                    )
                 )
-            )
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(formatTime(shownPosition.toLong()), color = Muted, style = MaterialTheme.typography.labelSmall)
-                Text(formatTime(connection.durationMs), color = Muted, style = MaterialTheme.typography.labelSmall)
-            }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(formatTime(shownPosition.toLong()), color = Muted, style = MaterialTheme.typography.labelSmall)
+                    Text(formatTime(connection.durationMs), color = Muted, style = MaterialTheme.typography.labelSmall)
+                }
 
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = { connection.toggleShuffle() }) {
-                    Icon(
-                        Icons.Default.Shuffle,
-                        contentDescription = if (connection.shuffleEnabled) "Shuffle on" else "Shuffle off",
-                        tint = if (connection.shuffleEnabled) Accent else Muted
-                    )
-                }
-                IconButton(onClick = { connection.previous() }) {
-                    Icon(
-                        Icons.Default.SkipPrevious,
-                        contentDescription = "Previous",
-                        tint = Color.White,
-                        modifier = Modifier.size(34.dp)
-                    )
-                }
-                IconButton(
-                    onClick = { connection.togglePlayPause() },
-                    modifier = Modifier.size(68.dp).clip(CircleShape).background(Color.White)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        if (connection.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (connection.isPlaying) "Pause" else "Play",
-                        tint = NightBase,
-                        modifier = Modifier.size(38.dp)
-                    )
+                    IconButton(onClick = { connection.toggleShuffle() }) {
+                        Icon(
+                            Icons.Default.Shuffle,
+                            contentDescription = if (connection.shuffleEnabled) "Shuffle on" else "Shuffle off",
+                            tint = if (connection.shuffleEnabled) Accent else Muted
+                        )
+                    }
+                    IconButton(onClick = { connection.previous() }) {
+                        Icon(
+                            Icons.Default.SkipPrevious,
+                            contentDescription = "Previous",
+                            tint = Color.White,
+                            modifier = Modifier.size(34.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = { connection.togglePlayPause() },
+                        modifier = Modifier.size(68.dp).clip(CircleShape).background(Color.White)
+                    ) {
+                        Icon(
+                            if (connection.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (connection.isPlaying) "Pause" else "Play",
+                            tint = NightBase,
+                            modifier = Modifier.size(38.dp)
+                        )
+                    }
+                    IconButton(onClick = { connection.next() }) {
+                        Icon(
+                            Icons.Default.SkipNext,
+                            contentDescription = "Next",
+                            tint = Color.White,
+                            modifier = Modifier.size(34.dp)
+                        )
+                    }
+                    IconButton(onClick = { connection.cycleRepeat() }) {
+                        val mode = connection.repeatMode
+                        Icon(
+                            if (mode == Player.REPEAT_MODE_ONE) Icons.Default.RepeatOne else Icons.Default.Repeat,
+                            contentDescription = when (mode) {
+                                Player.REPEAT_MODE_ONE -> "Repeat one"
+                                Player.REPEAT_MODE_ALL -> "Repeat all"
+                                else -> "Repeat off"
+                            },
+                            tint = if (mode == Player.REPEAT_MODE_OFF) Muted else Accent
+                        )
+                    }
                 }
-                IconButton(onClick = { connection.next() }) {
-                    Icon(
-                        Icons.Default.SkipNext,
-                        contentDescription = "Next",
-                        tint = Color.White,
-                        modifier = Modifier.size(34.dp)
-                    )
-                }
-                IconButton(onClick = { connection.cycleRepeat() }) {
-                    val mode = connection.repeatMode
-                    Icon(
-                        if (mode == Player.REPEAT_MODE_ONE) Icons.Default.RepeatOne else Icons.Default.Repeat,
-                        contentDescription = when (mode) {
-                            Player.REPEAT_MODE_ONE -> "Repeat one"
-                            Player.REPEAT_MODE_ALL -> "Repeat all"
-                            else -> "Repeat off"
-                        },
-                        tint = if (mode == Player.REPEAT_MODE_OFF) Muted else Accent
-                    )
-                }
-            }
 
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                FilterChip(
-                    selected = showLyrics,
-                    onClick = { showLyrics = !showLyrics },
-                    label = { Text("Lyrics") }
-                )
-                if (showLyrics && lyrics != null) {
-                    TextButton(onClick = {
-                        repo.delete(song.id)
-                        lyrics = null
-                    }) { Text("Remove lyrics") }
-                }
-                IconButton(onClick = { showQueue = true }) {
-                    Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = "Queue", tint = Color.White)
-                }
-                IconButton(onClick = { showSleep = true }) {
-                    Icon(
-                        Icons.Default.Timer,
-                        contentDescription = "Sleep timer",
-                        tint = if (connection.sleepEndsAt > 0L) Accent else Muted
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Jumps down to the lyrics card.
+                    FilterChip(
+                        selected = false,
+                        onClick = { scope.launch { pageScroll.animateScrollTo(pageScroll.maxValue) } },
+                        label = { Text("Lyrics") }
                     )
+                    IconButton(onClick = { showQueue = true }) {
+                        Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = "Queue", tint = Color.White)
+                    }
+                    IconButton(onClick = { showSleep = true }) {
+                        Icon(
+                            Icons.Default.Timer,
+                            contentDescription = "Sleep timer",
+                            tint = if (connection.sleepEndsAt > 0L) Accent else Muted
+                        )
+                    }
+                }
+
+                // Lyrics card: scroll the page down to reach it.
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp, bottom = 32.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(Color.White.copy(alpha = 0.10f))
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                ) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Lyrics",
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (lyrics != null) {
+                            TextButton(onClick = {
+                                repo.delete(song.id)
+                                lyrics = null
+                            }) { Text("Remove lyrics") }
+                        }
+                    }
+                    Box(Modifier.fillMaxWidth().height(lyricsCardHeight)) {
+                        LyricsPane(
+                            lyrics = lyrics,
+                            busy = busy,
+                            message = message,
+                            positionMs = connection.positionMs,
+                            onFind = { findOnline() },
+                            onImport = { importLauncher.launch(arrayOf("*/*")) },
+                            onSeek = { connection.seekTo(it) }
+                        )
+                    }
                 }
             }
         }
