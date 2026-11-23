@@ -14,6 +14,11 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -126,8 +131,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
-private val Accent = Color(0xFF9AB8FF)
-private val Muted = Color.White.copy(alpha = 0.55f)
+internal val Accent = Color(0xFF9AB8FF)
+internal val Muted = Color.White.copy(alpha = 0.55f)
 
 private enum class Section(val label: String) {
     ALL("All"),
@@ -195,6 +200,7 @@ fun MusicPlayerApp(connection: PlayerConnection) {
     var playlistToDelete by remember { mutableStateOf<String?>(null) }
     var bitrate by rememberSaveable { mutableIntStateOf(192) }
     var showEqualizer by rememberSaveable { mutableStateOf(false) }
+    var showNowPlaying by rememberSaveable { mutableStateOf(false) }
     var selectedForConvert by remember { mutableStateOf(emptySet<Long>()) }
 
     fun reload() {
@@ -540,8 +546,26 @@ fun MusicPlayerApp(connection: PlayerConnection) {
             }
 
             Spacer(Modifier.height(8.dp))
-            NowPlayingBar(connection = connection, song = currentSong)
+            NowPlayingBar(
+                connection = connection,
+                song = currentSong,
+                onOpen = { showNowPlaying = true }
+            )
             Spacer(Modifier.height(10.dp))
+        }
+
+        AnimatedVisibility(
+            visible = showNowPlaying && currentSong != null,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+        ) {
+            currentSong?.let { playing ->
+                NowPlayingScreen(
+                    connection = connection,
+                    song = playing,
+                    onClose = { showNowPlaying = false }
+                )
+            }
         }
     }
 
@@ -920,7 +944,7 @@ private fun JobRow(job: ConversionJob) {
 }
 
 @Composable
-private fun NowPlayingBar(connection: PlayerConnection, song: Song?) {
+private fun NowPlayingBar(connection: PlayerConnection, song: Song?, onOpen: () -> Unit) {
     var dragging by remember { mutableStateOf(false) }
     var dragPosition by remember { mutableFloatStateOf(0f) }
     var showSleepDialog by remember { mutableStateOf(false) }
@@ -964,7 +988,10 @@ private fun NowPlayingBar(connection: PlayerConnection, song: Song?) {
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.clickable(enabled = song != null) { onOpen() },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Artwork(song = song, size = 52.dp)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
@@ -1078,7 +1105,7 @@ private fun NowPlayingBar(connection: PlayerConnection, song: Song?) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun QueueSheet(connection: PlayerConnection, onDismiss: () -> Unit) {
+internal fun QueueSheet(connection: PlayerConnection, onDismiss: () -> Unit) {
     val queue = connection.queue
     val current = connection.currentIndex
 
@@ -1307,7 +1334,7 @@ private fun formatHz(hz: Int): String =
     if (hz >= 1000) "%.1f kHz".format(hz / 1000f) else "$hz Hz"
 
 @Composable
-private fun SleepTimerDialog(
+internal fun SleepTimerDialog(
     active: Boolean,
     onPick: (Int) -> Unit,
     onDismiss: () -> Unit
@@ -1364,7 +1391,7 @@ private val songsWithoutArtwork: MutableSet<String> =
     java.util.Collections.synchronizedSet(HashSet<String>())
 
 @Composable
-private fun Artwork(song: Song?, size: Dp) {
+internal fun Artwork(song: Song?, size: Dp, corner: Dp = 12.dp) {
     val context = LocalContext.current
     val px = with(LocalDensity.current) { size.roundToPx() }
     val bitmap by produceState<ImageBitmap?>(initialValue = null, song?.id, px) {
@@ -1373,7 +1400,7 @@ private fun Artwork(song: Song?, size: Dp) {
     Box(
         modifier = Modifier
             .size(size)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(corner))
             .background(Color.White.copy(alpha = 0.08f)),
         contentAlignment = Alignment.Center
     ) {
@@ -1391,7 +1418,7 @@ private fun Artwork(song: Song?, size: Dp) {
     }
 }
 
-private suspend fun loadArtwork(context: Context, song: Song, px: Int): ImageBitmap? {
+internal suspend fun loadArtwork(context: Context, song: Song, px: Int): ImageBitmap? {
     // Embedded-artwork thumbnails are only available through this API on Android 10+.
     if (Build.VERSION.SDK_INT < 29) return null
     // Keyed per file: embedded art differs between tracks, and "Unknown album" files share an id.
@@ -1424,7 +1451,7 @@ private fun displayNameOf(context: Context, uri: Uri): String =
             ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
     }.getOrNull() ?: uri.lastPathSegment ?: "audio"
 
-private fun formatTime(ms: Long): String {
+internal fun formatTime(ms: Long): String {
     val totalSeconds = (ms / 1000).coerceAtLeast(0)
     return "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
 }

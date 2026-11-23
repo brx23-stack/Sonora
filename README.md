@@ -17,16 +17,17 @@ An Android-first, offline-capable local music player starter project. The projec
 - **Add files from storage to a playlist** (the + button inside a playlist)
 - **Native playback of Opus, M4A/AAC, OGG, FLAC, WAV and MP3** (including voice notes and recordings)
 - **Convert to MP3** (128–320 kbps) from your library or any picked file; results are saved to `Music/Sonora`
+- **Immersive Now Playing**: tap the player bar for full-screen artwork, an animated background in the artwork's colours and smooth track-change transitions
+- **Live lyrics**: synchronized, scrolling lyrics (tap a line to jump to it). Look them up once online (LRCLIB) or import a `.lrc` file; they are stored on the phone and work offline
 - **Sleep timer** (15–90 min) that keeps working even if the app is closed
 - Unplayable or missing files are skipped instead of stalling playback
 - **Album artwork** in the list and now-playing bar (Android 10+) and in the notification
 
 ## Planned next
-1. Spotify-style full-screen now-playing interface
-2. Gapless/crossfade options
-3. Room-backed storage if playlists grow large
-4. Spotify playlist/account companion integration (subject to Spotify API eligibility and playback restrictions)
-5. Desktop edition using shared domain logic and a desktop-specific playback layer
+1. Audio visualizer, queue persistence, crossfade, ReplayGain and more playback-engine options
+2. Room-backed storage if playlists grow large
+3. Spotify playlist/account companion integration (subject to Spotify API eligibility and playback restrictions)
+4. Desktop edition using shared domain logic and a desktop-specific playback layer
 
 ## Build
 1. Install Android Studio with a compatible Android SDK.
@@ -39,6 +40,9 @@ The project uses Android Gradle Plugin 8.9.2 and Kotlin 2.0.21. Android Studio m
 
 ## Permissions
 The app requests access to audio files so it can list and play music stored on the device. It does not upload local music.
+
+## Privacy
+Sonora works offline. The only network access is the optional lyrics lookup, which sends the cleaned song title to lrclib.net when you tap **Find lyrics online**.
 
 ## Updating without losing data
 Builds are signed with the fixed debug key in `app/debug.keystore`, so a new APK installs over the old one as an update and keeps playlists and favourites. (It is a debug key, so don't use it for the Play Store.)
