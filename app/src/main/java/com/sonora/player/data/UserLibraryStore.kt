@@ -1,6 +1,9 @@
 package com.sonora.player.data
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import com.sonora.player.model.Song
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
@@ -10,8 +13,8 @@ import org.json.JSONObject
  * Songs are referenced by their MediaStore id. Data never leaves the device.
  */
 class UserLibraryStore(context: Context) {
-    private val prefs =
-        context.applicationContext.getSharedPreferences("user_library", Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val prefs = appContext.getSharedPreferences("user_library", Context.MODE_PRIVATE)
 
     // ---- Favourites ----
 
@@ -84,6 +87,76 @@ class UserLibraryStore(context: Context) {
         return playlists
     }
 
+    // ---- Imported files (picked from storage, not part of the MediaStore library) ----
+
+    fun loadImported(): List<Song> {
+        val raw = prefs.getString(KEY_IMPORTED, null) ?: return emptyList()
+        return try {
+            val arr = JSONArray(raw)
+            List(arr.length()) { i ->
+                val o = arr.getJSONObject(i)
+                Song(
+                    id = o.getLong("id"),
+                    title = o.getString("title"),
+                    artist = o.getString("artist"),
+                    album = o.getString("album"),
+                    albumId = 0L,
+                    durationMs = o.getLong("durationMs"),
+                    uri = Uri.parse(o.getString("uri")),
+                    displayName = o.getString("name")
+                )
+            }
+        } catch (e: JSONException) {
+            emptyList()
+        }
+    }
+
+    /** Adds songs, ignoring ones that are already imported. */
+    fun addImported(songs: List<Song>) {
+        val existing = loadImported()
+        val known = existing.map { it.id }.toSet()
+        saveImported(existing + songs.filter { it.id !in known })
+    }
+
+    /**
+     * Forgets imported files that are no longer in any playlist or favourites,
+     * and releases the access we kept to them. Returns the remaining imported songs.
+     */
+    fun pruneImported(): List<Song> {
+        val used = loadPlaylists().values.flatten().toSet() + loadFavourites()
+        val (keep, drop) = loadImported().partition { it.id in used }
+        if (drop.isNotEmpty()) {
+            saveImported(keep)
+            drop.forEach {
+                try {
+                    appContext.contentResolver.releasePersistableUriPermission(
+                        it.uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (e: Exception) {
+                    // Already released or never granted.
+                }
+            }
+        }
+        return keep
+    }
+
+    private fun saveImported(songs: List<Song>) {
+        val arr = JSONArray()
+        songs.forEach {
+            arr.put(
+                JSONObject()
+                    .put("id", it.id)
+                    .put("title", it.title)
+                    .put("artist", it.artist)
+                    .put("album", it.album)
+                    .put("durationMs", it.durationMs)
+                    .put("uri", it.uri.toString())
+                    .put("name", it.displayName)
+            )
+        }
+        prefs.edit().putString(KEY_IMPORTED, arr.toString()).apply()
+    }
+
     // ---- Helpers ----
 
     private fun savePlaylists(playlists: Map<String, List<Long>>) {
@@ -116,6 +189,7 @@ class UserLibraryStore(context: Context) {
         const val KEY_FAVOURITES = "favourites"
         const val KEY_HISTORY = "history"
         const val KEY_PLAYLISTS = "playlists"
+        const val KEY_IMPORTED = "imported_songs"
         const val MAX_HISTORY = 50
     }
 }

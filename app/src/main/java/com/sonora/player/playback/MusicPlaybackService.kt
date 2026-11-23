@@ -19,6 +19,7 @@ import com.sonora.player.MainActivity
 
 class MusicPlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
+    private var equalizer: EqualizerController? = null
 
     // Sleep timer lives here (not in the UI) so it still fires if the app is swiped away.
     private val handler = Handler(Looper.getMainLooper())
@@ -42,6 +43,8 @@ class MusicPlaybackService : MediaSessionService() {
             // Keep the CPU awake while playing local files with the screen off.
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .build()
+
+        equalizer = EqualizerController(this, player)
 
         val openAppIntent = PendingIntent.getActivity(
             this,
@@ -78,6 +81,12 @@ class MusicPlaybackService : MediaSessionService() {
             val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
                 .add(SET_SLEEP_TIMER)
                 .add(GET_SLEEP_TIMER)
+                .add(EQ_GET)
+                .add(EQ_ACTIVE)
+                .add(EQ_BAND)
+                .add(EQ_PRESET)
+                .add(EQ_BASS)
+                .add(EQ_RESET)
                 .build()
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailableSessionCommands(commands)
@@ -90,16 +99,46 @@ class MusicPlaybackService : MediaSessionService() {
             customCommand: SessionCommand,
             args: Bundle
         ): ListenableFuture<SessionResult> {
-            when (customCommand.customAction) {
-                ACTION_SET_SLEEP_TIMER -> setSleepTimer(args.getInt(EXTRA_MINUTES, 0))
-                ACTION_GET_SLEEP_TIMER -> Unit
+            val eq = equalizer
+            val extras: Bundle = when (customCommand.customAction) {
+                ACTION_SET_SLEEP_TIMER -> {
+                    setSleepTimer(args.getInt(EXTRA_MINUTES, 0))
+                    sleepExtras()
+                }
+                ACTION_GET_SLEEP_TIMER -> sleepExtras()
+                ACTION_EQ_GET -> eqExtras()
+                ACTION_EQ_ACTIVE -> {
+                    eq?.setActive(args.getBoolean(EXTRA_ON, false))
+                    eqExtras()
+                }
+                ACTION_EQ_BAND -> {
+                    eq?.setBand(args.getInt(EXTRA_BAND, 0), args.getInt(EXTRA_LEVEL, 0))
+                    eqExtras()
+                }
+                ACTION_EQ_PRESET -> {
+                    eq?.usePreset(args.getInt(EXTRA_PRESET, 0))
+                    eqExtras()
+                }
+                ACTION_EQ_BASS -> {
+                    eq?.setBass(args.getInt(EXTRA_STRENGTH, 0))
+                    eqExtras()
+                }
+                ACTION_EQ_RESET -> {
+                    eq?.reset()
+                    eqExtras()
+                }
                 else -> return Futures.immediateFuture(
                     SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED)
                 )
             }
-            val extras = Bundle().apply { putLong(EXTRA_ENDS_AT, sleepEndsAt) }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS, extras))
         }
+    }
+
+    private fun sleepExtras(): Bundle = Bundle().apply { putLong(EXTRA_ENDS_AT, sleepEndsAt) }
+
+    private fun eqExtras(): Bundle = equalizer?.state() ?: Bundle().apply {
+        putBoolean(EqualizerController.K_AVAILABLE, false)
     }
 
     // Swiping the app away should stop the service unless music is actually playing.
@@ -112,6 +151,8 @@ class MusicPlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         handler.removeCallbacks(sleepRunnable)
+        equalizer?.release()
+        equalizer = null
         mediaSession?.run {
             player.release()
             release()
@@ -128,5 +169,25 @@ class MusicPlaybackService : MediaSessionService() {
 
         val SET_SLEEP_TIMER = SessionCommand(ACTION_SET_SLEEP_TIMER, Bundle.EMPTY)
         val GET_SLEEP_TIMER = SessionCommand(ACTION_GET_SLEEP_TIMER, Bundle.EMPTY)
+
+        // Equalizer commands (state comes back in the result extras, see EqualizerController.state()).
+        const val ACTION_EQ_GET = "com.sonora.player.EQ_GET"
+        const val ACTION_EQ_ACTIVE = "com.sonora.player.EQ_ACTIVE"
+        const val ACTION_EQ_BAND = "com.sonora.player.EQ_BAND"
+        const val ACTION_EQ_PRESET = "com.sonora.player.EQ_PRESET"
+        const val ACTION_EQ_BASS = "com.sonora.player.EQ_BASS"
+        const val ACTION_EQ_RESET = "com.sonora.player.EQ_RESET"
+        const val EXTRA_ON = "on"
+        const val EXTRA_BAND = "band"
+        const val EXTRA_LEVEL = "level"
+        const val EXTRA_PRESET = "preset"
+        const val EXTRA_STRENGTH = "strength"
+
+        val EQ_GET = SessionCommand(ACTION_EQ_GET, Bundle.EMPTY)
+        val EQ_ACTIVE = SessionCommand(ACTION_EQ_ACTIVE, Bundle.EMPTY)
+        val EQ_BAND = SessionCommand(ACTION_EQ_BAND, Bundle.EMPTY)
+        val EQ_PRESET = SessionCommand(ACTION_EQ_PRESET, Bundle.EMPTY)
+        val EQ_BASS = SessionCommand(ACTION_EQ_BASS, Bundle.EMPTY)
+        val EQ_RESET = SessionCommand(ACTION_EQ_RESET, Bundle.EMPTY)
     }
 }

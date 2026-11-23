@@ -12,12 +12,23 @@ android {
         applicationId = "com.sonora.player"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.3.2"
+        versionCode = 5
+        versionName = "0.4.0"
 
         // FFmpeg natives are bundled for 64-bit ARM phones only (keeps the APK smaller).
         ndk {
             abiFilters += "arm64-v8a"
+        }
+    }
+
+    signingConfigs {
+        // A fixed key, so every build is signed identically and installs as an update
+        // (your playlists and favourites are kept). Debug key only: never use it for the Play Store.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
         }
     }
 

@@ -33,15 +33,19 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
@@ -54,24 +58,29 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -107,6 +116,7 @@ import com.sonora.player.convert.ConversionJob
 import com.sonora.player.convert.ConversionManager
 import com.sonora.player.convert.ConversionStatus
 import com.sonora.player.data.UserLibraryStore
+import com.sonora.player.library.FileImporter
 import com.sonora.player.library.LocalMusicRepository
 import com.sonora.player.model.Song
 import com.sonora.player.playback.PlayerConnection
@@ -114,6 +124,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 private val Accent = Color(0xFF9AB8FF)
 private val Muted = Color.White.copy(alpha = 0.55f)
@@ -160,7 +171,12 @@ fun MusicPlayerApp(connection: PlayerConnection) {
         }
     }
 
-    var songs by remember { mutableStateOf(emptyList<Song>()) }
+    var deviceSongs by remember { mutableStateOf(emptyList<Song>()) }
+    var importedSongs by remember { mutableStateOf(store.loadImported()) }
+    // Files picked into playlists are part of the library too.
+    val songs = remember(deviceSongs, importedSongs) {
+        (deviceSongs + importedSongs).sortedBy { it.title.lowercase() }
+    }
     var loading by remember { mutableStateOf(false) }
     var permissionGranted by remember { mutableStateOf(hasPermission(context, audioPermission)) }
     var query by rememberSaveable { mutableStateOf("") }
@@ -178,12 +194,13 @@ fun MusicPlayerApp(connection: PlayerConnection) {
     var newPlaylistRequest by remember { mutableStateOf<NewPlaylistRequest?>(null) }
     var playlistToDelete by remember { mutableStateOf<String?>(null) }
     var bitrate by rememberSaveable { mutableIntStateOf(192) }
+    var showEqualizer by rememberSaveable { mutableStateOf(false) }
     var selectedForConvert by remember { mutableStateOf(emptySet<Long>()) }
 
     fun reload() {
         scope.launch {
             loading = true
-            songs = withContext(Dispatchers.IO) {
+            deviceSongs = withContext(Dispatchers.IO) {
                 runCatching { repository.loadSongs() }.getOrDefault(emptyList())
             }
             loading = false
@@ -207,6 +224,34 @@ fun MusicPlayerApp(connection: PlayerConnection) {
                 uris.map { it to displayNameOf(context, it) },
                 bitrate
             )
+        }
+    }
+
+    // Pick audio files from anywhere on the device and add them to the playlist that is open.
+    val importToPlaylist = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        val target = openPlaylist
+        if (target != null && uris.isNotEmpty()) {
+            scope.launch {
+                val imported = withContext(Dispatchers.IO) {
+                    uris.mapNotNull { runCatching { FileImporter.read(context, it) }.getOrNull() }
+                }
+                if (imported.isNotEmpty()) {
+                    store.addImported(imported)
+                    importedSongs = store.loadImported()
+                    var updated = playlists
+                    imported.forEach { updated = store.addToPlaylist(target, it.id) }
+                    playlists = updated
+                }
+                val skipped = uris.size - imported.size
+                val message = when {
+                    imported.isEmpty() -> "Couldn't read those files as audio"
+                    skipped > 0 -> "Added ${imported.size} files, $skipped couldn't be read"
+                    else -> "Added ${imported.size} ${if (imported.size == 1) "file" else "files"} to $target"
+                }
+                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -309,11 +354,16 @@ fun MusicPlayerApp(connection: PlayerConnection) {
                         fontWeight = FontWeight.Bold
                     )
                 }
-                IconButton(onClick = {
-                    if (permissionGranted) reload()
-                    else permissionLauncher.launch(requiredPermissions.toTypedArray())
-                }) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Refresh library", tint = Color.White)
+                Row {
+                    IconButton(onClick = { showEqualizer = true }) {
+                        Icon(Icons.Default.Tune, contentDescription = "Equalizer", tint = Color.White)
+                    }
+                    IconButton(onClick = {
+                        if (permissionGranted) reload()
+                        else permissionLauncher.launch(requiredPermissions.toTypedArray())
+                    }) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh library", tint = Color.White)
+                    }
                 }
             }
 
@@ -420,6 +470,13 @@ fun MusicPlayerApp(connection: PlayerConnection) {
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f)
                                 )
+                                IconButton(onClick = { importToPlaylist.launch(arrayOf("audio/*")) }) {
+                                    Icon(
+                                        Icons.Default.Add,
+                                        contentDescription = "Add files from storage",
+                                        tint = Accent
+                                    )
+                                }
                                 IconButton(
                                     onClick = {
                                         visibleSongs.firstOrNull()?.let { playFrom(visibleSongs, it) }
@@ -459,12 +516,16 @@ fun MusicPlayerApp(connection: PlayerConnection) {
                                         onClick = { playFrom(visibleSongs, song) },
                                         onToggleFavourite = {
                                             favourites = store.setFavourite(song.id, song.id !in favourites)
+                                            importedSongs = store.pruneImported()
                                         },
                                         onPlayNext = { connection.playNext(song) },
                                         onAddToQueue = { connection.addToQueue(song) },
                                         onAddToPlaylist = { playlistPickerFor = song },
                                         onRemoveFromPlaylist = if (section == Section.PLAYLISTS && playlistName != null) {
-                                            { playlists = store.removeFromPlaylist(playlistName, song.id) }
+                                            {
+                                                playlists = store.removeFromPlaylist(playlistName, song.id)
+                                                importedSongs = store.pruneImported()
+                                            }
                                         } else null
                                     )
                                 }
@@ -472,6 +533,10 @@ fun MusicPlayerApp(connection: PlayerConnection) {
                         }
                     }
                 }
+            }
+
+            if (showEqualizer) {
+                EqualizerSheet(connection = connection, onDismiss = { showEqualizer = false })
             }
 
             Spacer(Modifier.height(8.dp))
@@ -531,6 +596,7 @@ fun MusicPlayerApp(connection: PlayerConnection) {
             confirmButton = {
                 TextButton(onClick = {
                     playlists = store.deletePlaylist(name)
+                    importedSongs = store.pruneImported()
                     if (openPlaylist == name) openPlaylist = null
                     playlistToDelete = null
                 }) { Text("Delete") }
@@ -858,6 +924,7 @@ private fun NowPlayingBar(connection: PlayerConnection, song: Song?) {
     var dragging by remember { mutableStateOf(false) }
     var dragPosition by remember { mutableFloatStateOf(0f) }
     var showSleepDialog by remember { mutableStateOf(false) }
+    var showQueue by remember { mutableStateOf(false) }
 
     // Count down the sleep timer; the service pauses playback itself when it expires.
     var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
@@ -873,6 +940,10 @@ private fun NowPlayingBar(connection: PlayerConnection, song: Song?) {
         }
     }
     val sleepRemainingMs = if (sleepEndsAt > 0L) (sleepEndsAt - now).coerceAtLeast(0L) else 0L
+
+    if (showQueue) {
+        QueueSheet(connection = connection, onDismiss = { showQueue = false })
+    }
 
     if (showSleepDialog) {
         SleepTimerDialog(
@@ -910,6 +981,13 @@ private fun NowPlayingBar(connection: PlayerConnection, song: Song?) {
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
+                    )
+                }
+                IconButton(onClick = { showQueue = true }) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.QueueMusic,
+                        contentDescription = "Queue",
+                        tint = Color.White
                     )
                 }
                 IconButton(onClick = { showSleepDialog = true }) {
@@ -997,6 +1075,236 @@ private fun NowPlayingBar(connection: PlayerConnection, song: Song?) {
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QueueSheet(connection: PlayerConnection, onDismiss: () -> Unit) {
+    val queue = connection.queue
+    val current = connection.currentIndex
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = Color(0xFF12151F)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Queue (${queue.size})",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                TextButton(
+                    onClick = { connection.clearUpcoming() },
+                    enabled = current >= 0 && current < queue.lastIndex
+                ) { Text("Clear upcoming") }
+            }
+
+            if (queue.isEmpty()) {
+                Text(
+                    "Nothing in the queue yet. Play a song, or use Add to queue on a song.",
+                    color = Muted,
+                    modifier = Modifier.padding(vertical = 24.dp)
+                )
+            } else {
+                LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false)) {
+                    items(queue, key = { it.index }) { item ->
+                        val isCurrent = item.index == current
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { connection.jumpTo(item.index) }
+                                .padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "${item.index + 1}",
+                                color = if (isCurrent) Accent else Muted,
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.width(32.dp)
+                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    item.title.ifBlank { "Unknown title" },
+                                    color = if (isCurrent) Accent else Color.White,
+                                    fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    item.artist,
+                                    color = Muted,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            IconButton(
+                                onClick = { connection.moveQueueItem(item.index, item.index - 1) },
+                                enabled = item.index > 0
+                            ) {
+                                Icon(
+                                    Icons.Default.KeyboardArrowUp,
+                                    contentDescription = "Move up",
+                                    tint = if (item.index > 0) Color.White else Muted
+                                )
+                            }
+                            IconButton(
+                                onClick = { connection.moveQueueItem(item.index, item.index + 1) },
+                                enabled = item.index < queue.lastIndex
+                            ) {
+                                Icon(
+                                    Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "Move down",
+                                    tint = if (item.index < queue.lastIndex) Color.White else Muted
+                                )
+                            }
+                            if (isCurrent) {
+                                Spacer(Modifier.size(48.dp))
+                            } else {
+                                IconButton(onClick = { connection.removeQueueItem(item.index) }) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Remove from queue",
+                                        tint = Muted
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EqualizerSheet(connection: PlayerConnection, onDismiss: () -> Unit) {
+    LaunchedEffect(connection.isConnected) {
+        if (connection.isConnected) connection.refreshEqualizer()
+    }
+    val state = connection.eqState
+    val sliderColors = SliderDefaults.colors(
+        thumbColor = Accent,
+        activeTrackColor = Accent,
+        inactiveTrackColor = Color.White.copy(alpha = 0.2f)
+    )
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = Color(0xFF12151F)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Equalizer",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Switch(
+                    checked = state?.enabled == true,
+                    onCheckedChange = { connection.setEqActive(it) },
+                    enabled = state?.available == true
+                )
+            }
+
+            if (state == null) {
+                Text("Connecting…", color = Muted, modifier = Modifier.padding(vertical = 16.dp))
+            } else if (!state.available) {
+                Text(
+                    "The equalizer isn't available on this device.",
+                    color = Muted,
+                    modifier = Modifier.padding(vertical = 16.dp)
+                )
+            } else {
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    state.presets.forEachIndexed { index, name ->
+                        FilterChip(
+                            selected = state.preset == index,
+                            onClick = { connection.useEqPreset(index) },
+                            label = { Text(name) },
+                            enabled = state.enabled
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+                state.levels.forEachIndexed { band, level ->
+                    val hz = state.freqsHz.getOrElse(band) { 0 }
+                    val db = "%+.1f".format(level / 100f)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            formatHz(hz),
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.width(64.dp)
+                        )
+                        Slider(
+                            value = level.toFloat(),
+                            onValueChange = { connection.setEqBand(band, it.roundToInt()) },
+                            valueRange = state.minLevel.toFloat()..state.maxLevel.toFloat(),
+                            enabled = state.enabled,
+                            colors = sliderColors,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            "$db dB",
+                            color = Muted,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.width(60.dp)
+                        )
+                    }
+                }
+
+                if (state.bassSupported) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Bass boost", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Slider(
+                        value = state.bass.toFloat(),
+                        onValueChange = { connection.setBass(it.roundToInt()) },
+                        valueRange = 0f..1000f,
+                        enabled = state.enabled,
+                        colors = sliderColors
+                    )
+                }
+
+                Spacer(Modifier.height(4.dp))
+                TextButton(onClick = { connection.resetEq() }, enabled = state.enabled) {
+                    Text("Reset to flat")
+                }
+            }
+        }
+    }
+}
+
+private fun formatHz(hz: Int): String =
+    if (hz >= 1000) "%.1f kHz".format(hz / 1000f) else "$hz Hz"
 
 @Composable
 private fun SleepTimerDialog(
