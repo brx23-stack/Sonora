@@ -1,13 +1,16 @@
 package com.sonora.player.ui
 
 import android.Manifest
+import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
 import android.provider.OpenableColumns
+import android.provider.Settings
 import android.util.LruCache
 import android.util.Size
 import android.widget.Toast
@@ -116,6 +119,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.media3.common.Player
@@ -126,6 +130,7 @@ import com.sonora.player.data.UserLibraryStore
 import com.sonora.player.library.FileImporter
 import com.sonora.player.library.LocalMusicRepository
 import com.sonora.player.model.Song
+import com.sonora.player.playback.MusicPlaybackService
 import com.sonora.player.playback.PlayerConnection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -265,8 +270,12 @@ fun MusicPlayerApp(connection: PlayerConnection, openNowPlayingRequest: Int = 0)
         }
     }
 
+    // Without notification access there is no notification-shade or lock-screen player.
+    var notificationsOff by remember { mutableStateOf(notificationsBlocked(context)) }
+
     // Rescan whenever the app comes back to the foreground so new files show up.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        notificationsOff = notificationsBlocked(context)
         permissionGranted = hasPermission(context, audioPermission)
         if (permissionGranted) reload()
     }
@@ -392,6 +401,28 @@ fun MusicPlayerApp(connection: PlayerConnection, openNowPlayingRequest: Int = 0)
                         else permissionLauncher.launch(requiredPermissions.toTypedArray())
                     }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh library", tint = Sonora.colors.text)
+                    }
+                }
+            }
+
+            if (notificationsOff) {
+                Spacer(Modifier.height(10.dp))
+                Surface(
+                    color = Sonora.colors.elevated,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Notifications are off, so the playback controls can't appear in the notification shade or on the lock screen.",
+                            color = Sonora.colors.text,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { openNotificationSettings(context) }) { Text("Turn on") }
                     }
                 }
             }
@@ -680,6 +711,25 @@ private fun InfoCard(
                 Button(onClick = onAction) { Text(actionLabel) }
             }
         }
+    }
+}
+
+/** True when the app's notifications, or the playback notification channel, are switched off. */
+private fun notificationsBlocked(context: Context): Boolean {
+    if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return true
+    val channel = context.getSystemService(NotificationManager::class.java)
+        ?.getNotificationChannel(MusicPlaybackService.CHANNEL_ID)
+    return channel != null && channel.importance == NotificationManager.IMPORTANCE_NONE
+}
+
+private fun openNotificationSettings(context: Context) {
+    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        Toast.makeText(context, "Open Settings, Apps, Sonora, Notifications", Toast.LENGTH_LONG).show()
     }
 }
 

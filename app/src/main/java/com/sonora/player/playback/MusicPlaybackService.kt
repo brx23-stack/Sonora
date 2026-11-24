@@ -1,5 +1,8 @@
 package com.sonora.player.playback
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Bundle
@@ -64,8 +67,13 @@ class MusicPlaybackService : MediaSessionService() {
             }
         })
 
-        // Same single Media3 notification as before, now with Sonora's own status-bar icon.
-        val notificationProvider = DefaultMediaNotificationProvider.Builder(this).build()
+        // Same single Media3 notification as before, now with Sonora's own status-bar icon and
+        // a normal-priority channel (some phones hide low-priority media notifications).
+        ensurePlaybackChannel()
+        val notificationProvider = DefaultMediaNotificationProvider.Builder(this)
+            .setChannelId(CHANNEL_ID)
+            .setChannelName(R.string.playback_channel_name)
+            .build()
         notificationProvider.setSmallIcon(R.drawable.ic_stat_sonora)
         setMediaNotificationProvider(notificationProvider)
 
@@ -87,6 +95,29 @@ class MusicPlaybackService : MediaSessionService() {
             .setBitmapLoader(artworkLoader)
             .setCallback(SessionCallback())
             .build()
+    }
+
+    // Silent, visible on the lock screen, and not low priority. Media3 uses this channel if it exists.
+    private fun ensurePlaybackChannel() {
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+        try {
+            // Earlier versions used Media3's default low-priority channel; drop it so only one is listed.
+            manager.deleteNotificationChannel(OLD_CHANNEL_ID)
+        } catch (e: SecurityException) {
+            // Still attached to a running foreground notification; harmless, it just stays unused.
+        }
+        if (manager.getNotificationChannel(CHANNEL_ID) == null) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                getString(R.string.playback_channel_name),
+                NotificationManager.IMPORTANCE_DEFAULT
+            )
+            channel.setSound(null, null)
+            channel.enableVibration(false)
+            channel.setShowBadge(false)
+            channel.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            manager.createNotificationChannel(channel)
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
@@ -194,6 +225,9 @@ class MusicPlaybackService : MediaSessionService() {
     }
 
     companion object {
+        const val CHANNEL_ID = "sonora_playback"
+        private const val OLD_CHANNEL_ID = "default_channel_id"
+
         const val ACTION_SET_SLEEP_TIMER = "com.sonora.player.SET_SLEEP_TIMER"
         const val ACTION_GET_SLEEP_TIMER = "com.sonora.player.GET_SLEEP_TIMER"
         const val EXTRA_MINUTES = "minutes"
