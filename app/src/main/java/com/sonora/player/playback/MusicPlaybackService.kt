@@ -8,7 +8,10 @@ import android.os.Looper
 import android.os.SystemClock
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
@@ -16,10 +19,13 @@ import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.sonora.player.MainActivity
+import com.sonora.player.R
+import com.sonora.player.visualizer.SonoraRenderersFactory
 
 class MusicPlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private var equalizer: EqualizerController? = null
+    private var bitmapLoader: SonoraBitmapLoader? = null
 
     // Sleep timer lives here (not in the UI) so it still fires if the app is swiped away.
     private val handler = Handler(Looper.getMainLooper())
@@ -37,7 +43,7 @@ class MusicPlaybackService : MediaSessionService() {
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
             .build()
 
-        val player = ExoPlayer.Builder(this)
+        val player = ExoPlayer.Builder(this, SonoraRenderersFactory(this))
             .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
             .setHandleAudioBecomingNoisy(true) // pause when headphones unplug
             // Keep the CPU awake while playing local files with the screen off.
@@ -46,15 +52,39 @@ class MusicPlaybackService : MediaSessionService() {
 
         equalizer = EqualizerController(this, player)
 
+        // A file that can't be played is skipped here, in the service, so it also works when the
+        // app window is closed or the screen is off.
+        player.addListener(object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                if (player.hasNextMediaItem()) {
+                    player.seekToNextMediaItem()
+                    player.prepare()
+                    player.play()
+                }
+            }
+        })
+
+        // Same single Media3 notification as before, now with Sonora's own status-bar icon.
+        val notificationProvider = DefaultMediaNotificationProvider.Builder(this).build()
+        notificationProvider.setSmallIcon(R.drawable.ic_stat_sonora)
+        setMediaNotificationProvider(notificationProvider)
+
+        // Tapping the notification (or the lock-screen player) opens the full Now Playing screen.
         val openAppIntent = PendingIntent.getActivity(
             this,
             0,
-            Intent(this, MainActivity::class.java),
+            Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra(MainActivity.EXTRA_OPEN_NOW_PLAYING, true),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        val artworkLoader = SonoraBitmapLoader(this)
+        bitmapLoader = artworkLoader
+
         mediaSession = MediaSession.Builder(this, player)
             .setSessionActivity(openAppIntent)
+            .setBitmapLoader(artworkLoader)
             .setCallback(SessionCallback())
             .build()
     }
@@ -153,6 +183,8 @@ class MusicPlaybackService : MediaSessionService() {
         handler.removeCallbacks(sleepRunnable)
         equalizer?.release()
         equalizer = null
+        bitmapLoader?.release()
+        bitmapLoader = null
         mediaSession?.run {
             player.release()
             release()

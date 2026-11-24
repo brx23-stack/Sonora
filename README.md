@@ -17,14 +17,17 @@ An Android-first, offline-capable local music player starter project. The projec
 - **Add files from storage to a playlist** (the + button inside a playlist)
 - **Native playback of Opus, M4A/AAC, OGG, FLAC, WAV and MP3** (including voice notes and recordings)
 - **Convert to MP3** (128–320 kbps) from your library or any picked file; results are saved to `Music/Sonora`
-- **Immersive Now Playing**: big cover art on top with an animated background in the artwork's colours; scroll down for the player controls and a lyrics card
+- **Immersive Now Playing**: big cover art on top; scroll down for the player controls, the visualizer and a lyrics card
+- **Artwork themes**: the Now Playing background, glows and accent colours are taken from the current album art and fade smoothly when the track changes. Text and accent colours are kept at WCAG AA contrast (4.5:1); tracks without artwork use a built-in indigo theme
+- **Real-time audio visualizer**: spectrum bars, waveform or circular style, driven by the audio that is actually playing (no microphone permission). Switch it on or off and pick the style on the Now Playing screen; it only runs while visible and playing
 - **Live lyrics**: synchronized, scrolling lyrics (tap a line to jump to it). Look them up once online (LRCLIB) or import a `.lrc` file; they are stored on the phone and work offline
+- **Media notification and lock screen**: title, artist, album art, previous / play-pause / next and a progress bar (Android 13+) in the notification shade and on the lock screen, all from one Media3 notification. Tapping it opens Now Playing. Playback and controls keep working with the app minimized or the screen off
 - **Sleep timer** (15–90 min) that keeps working even if the app is closed
 - Unplayable or missing files are skipped instead of stalling playback
 - **Album artwork** in the list and now-playing bar (Android 10+) and in the notification
 
 ## Planned next
-1. Audio visualizer, queue persistence, crossfade, ReplayGain and more playback-engine options
+1. Queue persistence, crossfade, ReplayGain and more playback-engine options
 2. Room-backed storage if playlists grow large
 3. Spotify playlist/account companion integration (subject to Spotify API eligibility and playback restrictions)
 4. Desktop edition using shared domain logic and a desktop-specific playback layer

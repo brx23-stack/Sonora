@@ -158,7 +158,7 @@ fun MusicPlayerTheme(content: @Composable () -> Unit) {
 }
 
 @Composable
-fun MusicPlayerApp(connection: PlayerConnection) {
+fun MusicPlayerApp(connection: PlayerConnection, openNowPlayingRequest: Int = 0) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val store = remember { UserLibraryStore(context) }
@@ -202,6 +202,11 @@ fun MusicPlayerApp(connection: PlayerConnection) {
     var showEqualizer by rememberSaveable { mutableStateOf(false) }
     var showNowPlaying by rememberSaveable { mutableStateOf(false) }
     var selectedForConvert by remember { mutableStateOf(emptySet<Long>()) }
+
+    // Tapping the playback notification asks MainActivity to open the full player.
+    LaunchedEffect(openNowPlayingRequest) {
+        if (openNowPlayingRequest > 0) showNowPlaying = true
+    }
 
     fun reload() {
         scope.launch {

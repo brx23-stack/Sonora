@@ -2,6 +2,7 @@ package com.sonora.player.playback
 
 import android.content.ComponentName
 import android.content.Context
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import androidx.compose.runtime.getValue
@@ -68,15 +69,10 @@ class PlayerConnection(private val context: Context) {
             if (events.contains(Player.EVENT_TIMELINE_CHANGED)) refreshQueue(player)
         }
 
-        // A missing or corrupt file used to leave playback stuck; skip to the next track instead.
+        // The service skips unplayable files itself (so it works with the app closed);
+        // the UI only counts them so it can tell the user.
         override fun onPlayerError(error: PlaybackException) {
             playbackErrorCount++
-            val c = controller ?: return
-            if (c.hasNextMediaItem()) {
-                c.seekToNextMediaItem()
-                c.prepare()
-                c.play()
-            }
         }
     }
 
@@ -343,7 +339,8 @@ class PlayerConnection(private val context: Context) {
                     .setTitle(title)
                     .setArtist(artist)
                     .setAlbumTitle(album)
-                    .setArtworkUri(artworkUri)
+                    // Android 10+: SonoraBitmapLoader fetches the thumbnail straight from the song.
+                    .setArtworkUri(if (Build.VERSION.SDK_INT >= 29) uri else artworkUri)
                     .build()
             )
             .build()

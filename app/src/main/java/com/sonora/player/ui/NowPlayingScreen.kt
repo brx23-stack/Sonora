@@ -119,6 +119,12 @@ fun NowPlayingScreen(connection: PlayerConnection, song: Song, onClose: () -> Un
 
     val pageScroll = rememberScrollState()
     val lyricsCardHeight = (LocalConfiguration.current.screenHeightDp * 0.6f).dp
+
+    // Artwork is loaded once and shared by the background and the colour theme.
+    val bitmap by produceState<ImageBitmap?>(initialValue = null, song.id) {
+        value = loadArtwork(context, song, 256)
+    }
+    val theme = rememberArtworkTheme(song, bitmap)
     var showQueue by remember { mutableStateOf(false) }
     var showSleep by remember { mutableStateOf(false) }
     var dragging by remember { mutableStateOf(false) }
@@ -187,7 +193,7 @@ fun NowPlayingScreen(connection: PlayerConnection, song: Song, onClose: () -> Un
             .background(NightBase)
             .pointerInput(Unit) { detectTapGestures { } }
     ) {
-        ImmersiveBackground(song)
+        ImmersiveBackground(bitmap, theme)
 
         Column(
             modifier = Modifier
@@ -208,7 +214,7 @@ fun NowPlayingScreen(connection: PlayerConnection, song: Song, onClose: () -> Un
                 }
                 Text(
                     "Now playing",
-                    color = Muted,
+                    color = theme.mutedText,
                     style = MaterialTheme.typography.labelLarge,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.weight(1f)
@@ -259,7 +265,7 @@ fun NowPlayingScreen(connection: PlayerConnection, song: Song, onClose: () -> Un
                         )
                         Text(
                             s.artist,
-                            color = Muted,
+                            color = theme.mutedText,
                             style = MaterialTheme.typography.bodyMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -280,13 +286,13 @@ fun NowPlayingScreen(connection: PlayerConnection, song: Song, onClose: () -> Un
                     valueRange = 0f..duration,
                     colors = SliderDefaults.colors(
                         thumbColor = Color.White,
-                        activeTrackColor = Color.White,
+                        activeTrackColor = theme.accent,
                         inactiveTrackColor = Color.White.copy(alpha = 0.25f)
                     )
                 )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(formatTime(shownPosition.toLong()), color = Muted, style = MaterialTheme.typography.labelSmall)
-                    Text(formatTime(connection.durationMs), color = Muted, style = MaterialTheme.typography.labelSmall)
+                    Text(formatTime(shownPosition.toLong()), color = theme.mutedText, style = MaterialTheme.typography.labelSmall)
+                    Text(formatTime(connection.durationMs), color = theme.mutedText, style = MaterialTheme.typography.labelSmall)
                 }
 
                 Row(
@@ -298,7 +304,7 @@ fun NowPlayingScreen(connection: PlayerConnection, song: Song, onClose: () -> Un
                         Icon(
                             Icons.Default.Shuffle,
                             contentDescription = if (connection.shuffleEnabled) "Shuffle on" else "Shuffle off",
-                            tint = if (connection.shuffleEnabled) Accent else Muted
+                            tint = if (connection.shuffleEnabled) theme.accent else theme.mutedText
                         )
                     }
                     IconButton(onClick = { connection.previous() }) {
@@ -316,7 +322,7 @@ fun NowPlayingScreen(connection: PlayerConnection, song: Song, onClose: () -> Un
                         Icon(
                             if (connection.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                             contentDescription = if (connection.isPlaying) "Pause" else "Play",
-                            tint = NightBase,
+                            tint = theme.backgroundBottom,
                             modifier = Modifier.size(38.dp)
                         )
                     }
@@ -337,7 +343,7 @@ fun NowPlayingScreen(connection: PlayerConnection, song: Song, onClose: () -> Un
                                 Player.REPEAT_MODE_ALL -> "Repeat all"
                                 else -> "Repeat off"
                             },
-                            tint = if (mode == Player.REPEAT_MODE_OFF) Muted else Accent
+                            tint = if (mode == Player.REPEAT_MODE_OFF) theme.mutedText else theme.accent
                         )
                     }
                 }
@@ -360,10 +366,17 @@ fun NowPlayingScreen(connection: PlayerConnection, song: Song, onClose: () -> Un
                         Icon(
                             Icons.Default.Timer,
                             contentDescription = "Sleep timer",
-                            tint = if (connection.sleepEndsAt > 0L) Accent else Muted
+                            tint = if (connection.sleepEndsAt > 0L) theme.accent else theme.mutedText
                         )
                     }
                 }
+
+                // Visualizer card (bars / wave / circle), switchable and remembered.
+                VisualizerCard(
+                    isPlaying = connection.isPlaying,
+                    theme = theme,
+                    modifier = Modifier.padding(top = 16.dp)
+                )
 
                 // Lyrics card: scroll the page down to reach it.
                 Column(
@@ -527,26 +540,12 @@ private fun SyncedLyrics(lines: List<LyricLine>, positionMs: Long, onSeek: (Long
     }
 }
 
-/** Blurred cover art plus two slowly drifting glows in colours taken from the artwork. */
+/**
+ * Blurred cover art plus two slowly drifting glows, coloured by the artwork theme.
+ * The glows are brightness-capped by the theme so text on top stays readable.
+ */
 @Composable
-private fun ImmersiveBackground(song: Song) {
-    val context = LocalContext.current
-    val fallback = listOf(Color(0xFF3A57B5), Color(0xFF7A3FA8))
-
-    val bitmap by produceState<ImageBitmap?>(initialValue = null, song.id) {
-        value = loadArtwork(context, song, 256)
-    }
-    val colors by produceState(initialValue = fallback, bitmap) {
-        val image = bitmap
-        value = if (image == null) {
-            fallback
-        } else {
-            withContext(Dispatchers.Default) { extractColors(image.asAndroidBitmap(), fallback) }
-        }
-    }
-    val c1 by animateColorAsState(colors[0], tween(900), label = "glow1")
-    val c2 by animateColorAsState(colors[1], tween(900), label = "glow2")
-
+private fun ImmersiveBackground(bitmap: ImageBitmap?, theme: ArtworkTheme) {
     val transition = rememberInfiniteTransition(label = "background")
     val p1 = transition.animateFloat(
         initialValue = 0f,
@@ -562,50 +561,39 @@ private fun ImmersiveBackground(song: Song) {
     )
 
     Box(Modifier.fillMaxSize()) {
-        val image = bitmap
-        if (image != null) {
-            Image(
-                bitmap = image,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().blur(40.dp).alpha(0.35f)
-            )
+        Canvas(Modifier.fillMaxSize()) {
+            drawRect(Brush.verticalGradient(listOf(theme.backgroundTop, theme.backgroundBottom)))
+        }
+        Crossfade(targetState = bitmap, animationSpec = tween(900), label = "backgroundArt") { image ->
+            if (image != null) {
+                Image(
+                    bitmap = image,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().blur(40.dp).alpha(0.25f)
+                )
+            } else {
+                Box(Modifier.fillMaxSize())
+            }
         }
         Canvas(Modifier.fillMaxSize()) {
             val radius = size.maxDimension * 0.75f
             drawRect(
                 Brush.radialGradient(
-                    colors = listOf(c1.copy(alpha = 0.6f), Color.Transparent),
+                    colors = listOf(theme.glowA.copy(alpha = 0.5f), Color.Transparent),
                     center = Offset(size.width * (0.1f + 0.8f * p1.value), size.height * (0.1f + 0.35f * p2.value)),
                     radius = radius
                 )
             )
             drawRect(
                 Brush.radialGradient(
-                    colors = listOf(c2.copy(alpha = 0.5f), Color.Transparent),
+                    colors = listOf(theme.glowB.copy(alpha = 0.42f), Color.Transparent),
                     center = Offset(size.width * (0.9f - 0.8f * p2.value), size.height * (0.9f - 0.4f * p1.value)),
                     radius = radius
                 )
             )
-            // Darken the bottom so the controls stay readable.
-            drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC090B12))))
+            // Darken the lower part so the controls and lyrics stay readable.
+            drawRect(Brush.verticalGradient(listOf(Color.Transparent, theme.backgroundBottom.copy(alpha = 0.8f))))
         }
     }
-}
-
-private fun extractColors(source: Bitmap, fallback: List<Color>): List<Color> = try {
-    val soft = source.copy(Bitmap.Config.ARGB_8888, false) ?: source
-    val small = Bitmap.createScaledBitmap(soft, 2, 2, true)
-    listOf(vibrant(small.getPixel(0, 0)), vibrant(small.getPixel(1, 1)))
-} catch (e: Exception) {
-    fallback
-}
-
-/** Keeps the hue but makes sure the colour is neither grey nor too dark. */
-private fun vibrant(argb: Int): Color {
-    val hsv = FloatArray(3)
-    android.graphics.Color.colorToHSV(argb, hsv)
-    hsv[1] = hsv[1].coerceIn(0.45f, 0.9f)
-    hsv[2] = hsv[2].coerceIn(0.5f, 0.85f)
-    return Color(android.graphics.Color.HSVToColor(hsv))
 }

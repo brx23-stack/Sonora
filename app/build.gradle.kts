@@ -12,8 +12,8 @@ android {
         applicationId = "com.sonora.player"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.6.0"
+        versionCode = 9
+        versionName = "0.7.1"
 
         // FFmpeg natives are bundled for 64-bit ARM phones only (keeps the APK smaller).
         ndk {
