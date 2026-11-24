@@ -62,6 +62,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -106,11 +107,24 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
-private val NightBase = Color(0xFF090B12)
+private val NightBase = Color(0xFF121212)
 
-/** Full-screen "Now playing": cover and controls on top, lyrics in a card further down the page. */
+/**
+ * Full-screen "Now playing": cover and controls on top, lyrics in a card further down the page.
+ * This screen is always dark, in light mode too: it takes its colours from the album art.
+ */
 @Composable
 fun NowPlayingScreen(connection: PlayerConnection, song: Song, onClose: () -> Unit) {
+    ForceDarkSystemBars()
+    CompositionLocalProvider(LocalSonoraColors provides DarkSonoraColors) {
+        MaterialTheme(colorScheme = SonoraDarkScheme) {
+            NowPlayingContent(connection, song, onClose)
+        }
+    }
+}
+
+@Composable
+private fun NowPlayingContent(connection: PlayerConnection, song: Song, onClose: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repo = remember { LyricsRepository(context) }
@@ -286,7 +300,7 @@ fun NowPlayingScreen(connection: PlayerConnection, song: Song, onClose: () -> Un
                     valueRange = 0f..duration,
                     colors = SliderDefaults.colors(
                         thumbColor = Color.White,
-                        activeTrackColor = theme.accent,
+                        activeTrackColor = Color.White,
                         inactiveTrackColor = Color.White.copy(alpha = 0.25f)
                     )
                 )
@@ -304,7 +318,7 @@ fun NowPlayingScreen(connection: PlayerConnection, song: Song, onClose: () -> Un
                         Icon(
                             Icons.Default.Shuffle,
                             contentDescription = if (connection.shuffleEnabled) "Shuffle on" else "Shuffle off",
-                            tint = if (connection.shuffleEnabled) theme.accent else theme.mutedText
+                            tint = if (connection.shuffleEnabled) SpotifyGreenBright else theme.mutedText
                         )
                     }
                     IconButton(onClick = { connection.previous() }) {
@@ -343,7 +357,7 @@ fun NowPlayingScreen(connection: PlayerConnection, song: Song, onClose: () -> Un
                                 Player.REPEAT_MODE_ALL -> "Repeat all"
                                 else -> "Repeat off"
                             },
-                            tint = if (mode == Player.REPEAT_MODE_OFF) theme.mutedText else theme.accent
+                            tint = if (mode == Player.REPEAT_MODE_OFF) theme.mutedText else SpotifyGreenBright
                         )
                     }
                 }
@@ -366,7 +380,7 @@ fun NowPlayingScreen(connection: PlayerConnection, song: Song, onClose: () -> Un
                         Icon(
                             Icons.Default.Timer,
                             contentDescription = "Sleep timer",
-                            tint = if (connection.sleepEndsAt > 0L) theme.accent else theme.mutedText
+                            tint = if (connection.sleepEndsAt > 0L) SpotifyGreenBright else theme.mutedText
                         )
                     }
                 }

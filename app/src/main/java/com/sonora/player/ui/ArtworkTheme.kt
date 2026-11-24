@@ -39,10 +39,15 @@ internal data class ArtworkTheme(
     val mutedText: Color
 ) {
     companion object {
-        /** Used when a track has no artwork, or the artwork has no usable colour. */
-        val Fallback: ArtworkTheme = ArtworkThemes.build(
-            h1 = 225f, s1 = 0.65f, v1 = 0.70f,
-            h2 = 280f, s2 = 0.55f, v2 = 0.65f
+        /** Used when a track has no artwork, or the artwork has no usable colour: dark grey with green. */
+        val Fallback: ArtworkTheme = ArtworkTheme(
+            backgroundTop = Color(0xFF282828),
+            backgroundBottom = Color(0xFF121212),
+            glowA = Color(0xFF17613A),
+            glowB = Color(0xFF3A3A3A),
+            accent = Color(0xFF1ED760),
+            accentAlt = Color(0xFF1DB954),
+            mutedText = Color(0xFFB3B3B3)
         )
     }
 }

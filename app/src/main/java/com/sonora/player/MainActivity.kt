@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import com.sonora.player.playback.PlayerConnection
 import com.sonora.player.ui.MusicPlayerApp
 import com.sonora.player.ui.MusicPlayerTheme
+import com.sonora.player.ui.ThemeSettings
 
 class MainActivity : ComponentActivity() {
     private lateinit var connection: PlayerConnection
@@ -20,11 +21,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // The UI is always dark, so keep system bar icons light regardless of system theme.
-        enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
-            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT)
-        )
+        // Light, dark or system theme is chosen in the app; the theme also sets the system bar style.
+        ThemeSettings.init(this)
+        enableEdgeToEdge()
 
         connection = PlayerConnection(this)
         connection.connect()

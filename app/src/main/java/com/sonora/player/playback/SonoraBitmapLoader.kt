@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
-import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
@@ -75,11 +74,11 @@ class SonoraBitmapLoader(private val context: Context) : BitmapLoader {
     private fun placeholder(): Bitmap {
         val bitmap = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        canvas.drawColor(0xFF1B2140.toInt())
+        canvas.drawColor(0xFF282828.toInt())
         ContextCompat.getDrawable(context, R.drawable.ic_stat_sonora)?.let { icon ->
             val pad = SIZE / 4
             icon.setBounds(pad, pad, SIZE - pad, SIZE - pad)
-            icon.setTint(Color.WHITE)
+            icon.setTint(0xFF1ED760.toInt())
             icon.draw(canvas)
         }
         return bitmap

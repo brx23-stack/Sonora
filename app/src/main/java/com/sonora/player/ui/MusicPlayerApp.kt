@@ -45,6 +45,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BrightnessMedium
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
@@ -131,8 +133,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
-internal val Accent = Color(0xFF9AB8FF)
-internal val Muted = Color.White.copy(alpha = 0.55f)
+// Colours for the always-dark Now Playing screen. The rest of the app uses Sonora.colors.
+internal val Accent = SpotifyGreenBright
+internal val Muted = Color(0xFFB3B3B3)
 
 private enum class Section(val label: String) {
     ALL("All"),
@@ -143,19 +146,6 @@ private enum class Section(val label: String) {
 }
 
 private data class NewPlaylistRequest(val songToAdd: Song?)
-
-@Composable
-fun MusicPlayerTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = darkColorScheme(
-            primary = Accent,
-            secondary = Color(0xFFB7A4FF),
-            background = Color(0xFF090B12),
-            surface = Color(0xFF171B28)
-        ),
-        content = content
-    )
-}
 
 @Composable
 fun MusicPlayerApp(connection: PlayerConnection, openNowPlayingRequest: Int = 0) {
@@ -340,7 +330,9 @@ fun MusicPlayerApp(connection: PlayerConnection, openNowPlayingRequest: Int = 0)
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    listOf(Color(0xFF151B2C), Color(0xFF090B12), Color(0xFF101323))
+                    0f to Sonora.colors.headerTint,
+                    0.45f to Sonora.colors.background,
+                    1f to Sonora.colors.background
                 )
             )
     ) {
@@ -357,23 +349,49 @@ fun MusicPlayerApp(connection: PlayerConnection, openNowPlayingRequest: Int = 0)
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("SONORA", color = Accent, style = MaterialTheme.typography.labelLarge)
+                    Text("SONORA", color = Sonora.colors.accent, style = MaterialTheme.typography.labelLarge)
                     Text(
                         "Library",
-                        color = Color.White,
+                        color = Sonora.colors.text,
                         style = MaterialTheme.typography.headlineLarge,
                         fontWeight = FontWeight.Bold
                     )
                 }
                 Row {
+                    var showThemeMenu by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(onClick = { showThemeMenu = true }) {
+                            Icon(
+                                Icons.Default.BrightnessMedium,
+                                contentDescription = "Appearance",
+                                tint = Sonora.colors.text
+                            )
+                        }
+                        DropdownMenu(expanded = showThemeMenu, onDismissRequest = { showThemeMenu = false }) {
+                            ThemeMode.entries.forEach { m ->
+                                DropdownMenuItem(
+                                    text = { Text(m.label) },
+                                    onClick = {
+                                        ThemeSettings.set(context, m)
+                                        showThemeMenu = false
+                                    },
+                                    trailingIcon = {
+                                        if (ThemeSettings.mode == m) {
+                                            Icon(Icons.Default.Check, contentDescription = "Selected")
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
                     IconButton(onClick = { showEqualizer = true }) {
-                        Icon(Icons.Default.Tune, contentDescription = "Equalizer", tint = Color.White)
+                        Icon(Icons.Default.Tune, contentDescription = "Equalizer", tint = Sonora.colors.text)
                     }
                     IconButton(onClick = {
                         if (permissionGranted) reload()
                         else permissionLauncher.launch(requiredPermissions.toTypedArray())
                     }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh library", tint = Color.White)
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh library", tint = Sonora.colors.text)
                     }
                 }
             }
@@ -470,12 +488,12 @@ fun MusicPlayerApp(connection: PlayerConnection, openNowPlayingRequest: Int = 0)
                                     Icon(
                                         Icons.AutoMirrored.Filled.ArrowBack,
                                         contentDescription = "Back to playlists",
-                                        tint = Color.White
+                                        tint = Sonora.colors.text
                                     )
                                 }
                                 Text(
                                     playlistName,
-                                    color = Color.White,
+                                    color = Sonora.colors.text,
                                     fontWeight = FontWeight.SemiBold,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
@@ -485,7 +503,7 @@ fun MusicPlayerApp(connection: PlayerConnection, openNowPlayingRequest: Int = 0)
                                     Icon(
                                         Icons.Default.Add,
                                         contentDescription = "Add files from storage",
-                                        tint = Accent
+                                        tint = Sonora.colors.accent
                                     )
                                 }
                                 IconButton(
@@ -496,14 +514,14 @@ fun MusicPlayerApp(connection: PlayerConnection, openNowPlayingRequest: Int = 0)
                                     Icon(
                                         Icons.Default.PlayArrow,
                                         contentDescription = "Play playlist",
-                                        tint = Accent
+                                        tint = Sonora.colors.accent
                                     )
                                 }
                             }
                         } else {
                             Text(
                                 if (loading) "Scanning…" else "${visibleSongs.size} songs",
-                                color = Color.LightGray,
+                                color = Sonora.colors.textSecondary,
                                 modifier = Modifier.padding(bottom = 8.dp)
                             )
                         }
@@ -647,16 +665,16 @@ private fun InfoCard(
     onAction: (() -> Unit)? = null
 ) {
     Surface(
-        color = Color.White.copy(alpha = 0.07f),
+        color = Sonora.colors.card,
         shape = RoundedCornerShape(24.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(20.dp)) {
-            Icon(Icons.Default.MusicNote, contentDescription = null, tint = Accent)
+            Icon(Icons.Default.MusicNote, contentDescription = null, tint = Sonora.colors.accent)
             Spacer(Modifier.height(8.dp))
-            Text(title, color = Color.White, fontWeight = FontWeight.SemiBold)
+            Text(title, color = Sonora.colors.text, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(4.dp))
-            Text(message, color = Color.LightGray)
+            Text(message, color = Sonora.colors.textSecondary)
             if (actionLabel != null && onAction != null) {
                 Spacer(Modifier.height(14.dp))
                 Button(onClick = onAction) { Text(actionLabel) }
@@ -704,7 +722,7 @@ private fun PlaylistList(
                 items(playlists.keys.toList(), key = { it }) { name ->
                     val count = playlists[name].orEmpty().size
                     Surface(
-                        color = Color.White.copy(alpha = 0.065f),
+                        color = Sonora.colors.card,
                         shape = RoundedCornerShape(18.dp),
                         modifier = Modifier.fillMaxWidth().clickable { onOpen(name) }
                     ) {
@@ -712,18 +730,18 @@ private fun PlaylistList(
                             modifier = Modifier.padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.MusicNote, contentDescription = null, tint = Accent)
+                            Icon(Icons.Default.MusicNote, contentDescription = null, tint = Sonora.colors.accent)
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(name, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(name, color = Sonora.colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(
                                     if (count == 1) "1 song" else "$count songs",
-                                    color = Color.LightGray,
+                                    color = Sonora.colors.textSecondary,
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             }
                             IconButton(onClick = { onDelete(name) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete playlist $name", tint = Muted)
+                                Icon(Icons.Default.Delete, contentDescription = "Delete playlist $name", tint = Sonora.colors.textSecondary)
                             }
                         }
                     }
@@ -748,7 +766,7 @@ private fun SongRow(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Surface(
-        color = if (isCurrent) Accent.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.065f),
+        color = if (isCurrent) Sonora.colors.accent.copy(alpha = 0.16f) else Sonora.colors.card,
         shape = RoundedCornerShape(18.dp),
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
     ) {
@@ -761,7 +779,7 @@ private fun SongRow(
             Column(Modifier.weight(1f)) {
                 Text(
                     song.title,
-                    color = if (isCurrent) Accent else Color.White,
+                    color = if (isCurrent) Sonora.colors.accent else Sonora.colors.text,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -769,7 +787,7 @@ private fun SongRow(
                     (if (isPlaying) "Playing • " else "") +
                         (if (song.format.isNotEmpty()) "${song.format} • " else "") +
                         song.artist,
-                    color = Color.LightGray,
+                    color = Sonora.colors.textSecondary,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -779,12 +797,12 @@ private fun SongRow(
                 Icon(
                     if (isFavourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                     contentDescription = if (isFavourite) "Remove from favourites" else "Add to favourites",
-                    tint = if (isFavourite) Accent else Muted
+                    tint = if (isFavourite) Sonora.colors.accent else Sonora.colors.textSecondary
                 )
             }
             Box {
                 IconButton(onClick = { menuOpen = true }) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "More options", tint = Muted)
+                    Icon(Icons.Default.MoreVert, contentDescription = "More options", tint = Sonora.colors.textSecondary)
                 }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     DropdownMenuItem(text = { Text("Play next") }, onClick = { menuOpen = false; onPlayNext() })
@@ -821,10 +839,10 @@ private fun ConvertScreen(
     ) {
         item(key = "header") {
             Column {
-                Text("Convert to MP3", color = Color.White, fontWeight = FontWeight.SemiBold)
+                Text("Convert to MP3", color = Sonora.colors.text, fontWeight = FontWeight.SemiBold)
                 Text(
                     "Works with Opus, M4A, AAC, OGG, FLAC, WAV and more. Keep the app open while converting.",
-                    color = Color.LightGray,
+                    color = Sonora.colors.textSecondary,
                     style = MaterialTheme.typography.bodySmall
                 )
                 Spacer(Modifier.height(10.dp))
@@ -857,7 +875,7 @@ private fun ConvertScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Conversions", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text("Conversions", color = Sonora.colors.text, fontWeight = FontWeight.SemiBold)
                     TextButton(onClick = onClearFinished) { Text("Clear finished") }
                 }
             }
@@ -870,7 +888,7 @@ private fun ConvertScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("From your library (${songs.size})", color = Color.White, fontWeight = FontWeight.SemiBold)
+                Text("From your library (${songs.size})", color = Sonora.colors.text, fontWeight = FontWeight.SemiBold)
                 if (songs.isNotEmpty()) {
                     TextButton(onClick = onSelectAll) {
                         Text(if (songs.all { it.id in selected }) "Clear" else "Select all")
@@ -890,7 +908,7 @@ private fun ConvertScreen(
 
         items(songs, key = { "song-${it.id}" }) { song ->
             Surface(
-                color = Color.White.copy(alpha = 0.065f),
+                color = Sonora.colors.card,
                 shape = RoundedCornerShape(18.dp),
                 modifier = Modifier.fillMaxWidth().clickable { onToggle(song.id) }
             ) {
@@ -901,10 +919,10 @@ private fun ConvertScreen(
                     Checkbox(checked = song.id in selected, onCheckedChange = null)
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(song.title, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(song.title, color = Sonora.colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(
                             "${song.format} • ${song.artist}",
-                            color = Color.LightGray,
+                            color = Sonora.colors.textSecondary,
                             style = MaterialTheme.typography.bodySmall,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -919,12 +937,12 @@ private fun ConvertScreen(
 @Composable
 private fun JobRow(job: ConversionJob) {
     Surface(
-        color = Color.White.copy(alpha = 0.10f),
+        color = Sonora.colors.elevated,
         shape = RoundedCornerShape(18.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(12.dp)) {
-            Text(job.name, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(job.name, color = Sonora.colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val statusText = when (job.status) {
                 ConversionStatus.QUEUED -> "Waiting…"
                 ConversionStatus.RUNNING -> "Converting… ${(job.progress * 100).toInt()}%"
@@ -933,7 +951,7 @@ private fun JobRow(job: ConversionJob) {
             }
             Text(
                 statusText,
-                color = if (job.status == ConversionStatus.FAILED) Color(0xFFFF8A80) else Color.LightGray,
+                color = if (job.status == ConversionStatus.FAILED) Sonora.colors.error else Sonora.colors.textSecondary,
                 style = MaterialTheme.typography.bodySmall
             )
             if (job.status == ConversionStatus.RUNNING) {
@@ -941,7 +959,7 @@ private fun JobRow(job: ConversionJob) {
                 LinearProgressIndicator(
                     progress = { job.progress },
                     modifier = Modifier.fillMaxWidth(),
-                    color = Accent
+                    color = Sonora.colors.accent
                 )
             }
         }
@@ -988,7 +1006,7 @@ private fun NowPlayingBar(connection: PlayerConnection, song: Song?, onOpen: () 
     val shownPosition = (if (dragging) dragPosition else connection.positionMs.toFloat()).coerceIn(0f, duration)
 
     Surface(
-        color = Color.White.copy(alpha = 0.10f),
+        color = Sonora.colors.elevated,
         shape = RoundedCornerShape(24.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -1002,14 +1020,14 @@ private fun NowPlayingBar(connection: PlayerConnection, song: Song?, onOpen: () 
                 Column(Modifier.weight(1f)) {
                     Text(
                         song?.title ?: "Nothing playing",
-                        color = Color.White,
+                        color = Sonora.colors.text,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         song?.artist ?: "Pick a song to start",
-                        color = Color.LightGray,
+                        color = Sonora.colors.textSecondary,
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -1019,14 +1037,14 @@ private fun NowPlayingBar(connection: PlayerConnection, song: Song?, onOpen: () 
                     Icon(
                         Icons.AutoMirrored.Filled.QueueMusic,
                         contentDescription = "Queue",
-                        tint = Color.White
+                        tint = Sonora.colors.text
                     )
                 }
                 IconButton(onClick = { showSleepDialog = true }) {
                     Icon(
                         Icons.Default.Timer,
                         contentDescription = if (sleepEndsAt > 0L) "Sleep timer on" else "Sleep timer",
-                        tint = if (sleepEndsAt > 0L) Accent else Muted
+                        tint = if (sleepEndsAt > 0L) Sonora.colors.accent else Sonora.colors.textSecondary
                     )
                 }
             }
@@ -1034,7 +1052,7 @@ private fun NowPlayingBar(connection: PlayerConnection, song: Song?, onOpen: () 
             if (sleepEndsAt > 0L) {
                 Text(
                     "Sleep timer: pausing in ${formatTime(sleepRemainingMs)}",
-                    color = Accent,
+                    color = Sonora.colors.accent,
                     style = MaterialTheme.typography.labelSmall
                 )
             }
@@ -1052,14 +1070,14 @@ private fun NowPlayingBar(connection: PlayerConnection, song: Song?, onOpen: () 
                 valueRange = 0f..duration,
                 enabled = song != null,
                 colors = SliderDefaults.colors(
-                    thumbColor = Accent,
-                    activeTrackColor = Accent,
-                    inactiveTrackColor = Color.White.copy(alpha = 0.2f)
+                    thumbColor = Sonora.colors.accent,
+                    activeTrackColor = Sonora.colors.accent,
+                    inactiveTrackColor = Sonora.colors.inactive
                 )
             )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(formatTime(shownPosition.toLong()), color = Muted, style = MaterialTheme.typography.labelSmall)
-                Text(formatTime(connection.durationMs), color = Muted, style = MaterialTheme.typography.labelSmall)
+                Text(formatTime(shownPosition.toLong()), color = Sonora.colors.textSecondary, style = MaterialTheme.typography.labelSmall)
+                Text(formatTime(connection.durationMs), color = Sonora.colors.textSecondary, style = MaterialTheme.typography.labelSmall)
             }
 
             Row(
@@ -1071,25 +1089,25 @@ private fun NowPlayingBar(connection: PlayerConnection, song: Song?, onOpen: () 
                     Icon(
                         Icons.Default.Shuffle,
                         contentDescription = if (connection.shuffleEnabled) "Shuffle on" else "Shuffle off",
-                        tint = if (connection.shuffleEnabled) Accent else Muted
+                        tint = if (connection.shuffleEnabled) Sonora.colors.accent else Sonora.colors.textSecondary
                     )
                 }
                 IconButton(onClick = { connection.previous() }) {
-                    Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = Color.White)
+                    Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = Sonora.colors.text)
                 }
                 IconButton(
                     onClick = { connection.togglePlayPause() },
-                    modifier = Modifier.size(56.dp).clip(CircleShape).background(Accent)
+                    modifier = Modifier.size(56.dp).clip(CircleShape).background(Sonora.colors.accentFill)
                 ) {
                     Icon(
                         if (connection.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = if (connection.isPlaying) "Pause" else "Play",
-                        tint = Color(0xFF090B12),
+                        tint = Sonora.colors.onAccent,
                         modifier = Modifier.size(32.dp)
                     )
                 }
                 IconButton(onClick = { connection.next() }) {
-                    Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = Color.White)
+                    Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = Sonora.colors.text)
                 }
                 IconButton(onClick = { connection.cycleRepeat() }) {
                     val mode = connection.repeatMode
@@ -1100,7 +1118,7 @@ private fun NowPlayingBar(connection: PlayerConnection, song: Song?, onOpen: () 
                             Player.REPEAT_MODE_ALL -> "Repeat all"
                             else -> "Repeat off"
                         },
-                        tint = if (mode == Player.REPEAT_MODE_OFF) Muted else Accent
+                        tint = if (mode == Player.REPEAT_MODE_OFF) Sonora.colors.textSecondary else Sonora.colors.accent
                     )
                 }
             }
@@ -1117,7 +1135,7 @@ internal fun QueueSheet(connection: PlayerConnection, onDismiss: () -> Unit) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = Color(0xFF12151F)
+        containerColor = Sonora.colors.elevated
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
             Row(
@@ -1127,7 +1145,7 @@ internal fun QueueSheet(connection: PlayerConnection, onDismiss: () -> Unit) {
             ) {
                 Text(
                     "Queue (${queue.size})",
-                    color = Color.White,
+                    color = Sonora.colors.text,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
@@ -1140,7 +1158,7 @@ internal fun QueueSheet(connection: PlayerConnection, onDismiss: () -> Unit) {
             if (queue.isEmpty()) {
                 Text(
                     "Nothing in the queue yet. Play a song, or use Add to queue on a song.",
-                    color = Muted,
+                    color = Sonora.colors.textSecondary,
                     modifier = Modifier.padding(vertical = 24.dp)
                 )
             } else {
@@ -1156,21 +1174,21 @@ internal fun QueueSheet(connection: PlayerConnection, onDismiss: () -> Unit) {
                         ) {
                             Text(
                                 "${item.index + 1}",
-                                color = if (isCurrent) Accent else Muted,
+                                color = if (isCurrent) Sonora.colors.accent else Sonora.colors.textSecondary,
                                 style = MaterialTheme.typography.labelMedium,
                                 modifier = Modifier.width(32.dp)
                             )
                             Column(Modifier.weight(1f)) {
                                 Text(
                                     item.title.ifBlank { "Unknown title" },
-                                    color = if (isCurrent) Accent else Color.White,
+                                    color = if (isCurrent) Sonora.colors.accent else Sonora.colors.text,
                                     fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
                                     item.artist,
-                                    color = Muted,
+                                    color = Sonora.colors.textSecondary,
                                     style = MaterialTheme.typography.bodySmall,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -1183,7 +1201,7 @@ internal fun QueueSheet(connection: PlayerConnection, onDismiss: () -> Unit) {
                                 Icon(
                                     Icons.Default.KeyboardArrowUp,
                                     contentDescription = "Move up",
-                                    tint = if (item.index > 0) Color.White else Muted
+                                    tint = if (item.index > 0) Sonora.colors.text else Sonora.colors.inactive
                                 )
                             }
                             IconButton(
@@ -1193,7 +1211,7 @@ internal fun QueueSheet(connection: PlayerConnection, onDismiss: () -> Unit) {
                                 Icon(
                                     Icons.Default.KeyboardArrowDown,
                                     contentDescription = "Move down",
-                                    tint = if (item.index < queue.lastIndex) Color.White else Muted
+                                    tint = if (item.index < queue.lastIndex) Sonora.colors.text else Sonora.colors.inactive
                                 )
                             }
                             if (isCurrent) {
@@ -1203,7 +1221,7 @@ internal fun QueueSheet(connection: PlayerConnection, onDismiss: () -> Unit) {
                                     Icon(
                                         Icons.Default.Close,
                                         contentDescription = "Remove from queue",
-                                        tint = Muted
+                                        tint = Sonora.colors.textSecondary
                                     )
                                 }
                             }
@@ -1224,15 +1242,15 @@ private fun EqualizerSheet(connection: PlayerConnection, onDismiss: () -> Unit) 
     }
     val state = connection.eqState
     val sliderColors = SliderDefaults.colors(
-        thumbColor = Accent,
-        activeTrackColor = Accent,
-        inactiveTrackColor = Color.White.copy(alpha = 0.2f)
+        thumbColor = Sonora.colors.accent,
+        activeTrackColor = Sonora.colors.accent,
+        inactiveTrackColor = Sonora.colors.inactive
     )
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = Color(0xFF12151F)
+        containerColor = Sonora.colors.elevated
     ) {
         Column(
             modifier = Modifier
@@ -1248,7 +1266,7 @@ private fun EqualizerSheet(connection: PlayerConnection, onDismiss: () -> Unit) 
             ) {
                 Text(
                     "Equalizer",
-                    color = Color.White,
+                    color = Sonora.colors.text,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
@@ -1260,11 +1278,11 @@ private fun EqualizerSheet(connection: PlayerConnection, onDismiss: () -> Unit) 
             }
 
             if (state == null) {
-                Text("Connecting…", color = Muted, modifier = Modifier.padding(vertical = 16.dp))
+                Text("Connecting…", color = Sonora.colors.textSecondary, modifier = Modifier.padding(vertical = 16.dp))
             } else if (!state.available) {
                 Text(
                     "The equalizer isn't available on this device.",
-                    color = Muted,
+                    color = Sonora.colors.textSecondary,
                     modifier = Modifier.padding(vertical = 16.dp)
                 )
             } else {
@@ -1293,7 +1311,7 @@ private fun EqualizerSheet(connection: PlayerConnection, onDismiss: () -> Unit) 
                     ) {
                         Text(
                             formatHz(hz),
-                            color = Color.White,
+                            color = Sonora.colors.text,
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.width(64.dp)
                         )
@@ -1307,7 +1325,7 @@ private fun EqualizerSheet(connection: PlayerConnection, onDismiss: () -> Unit) 
                         )
                         Text(
                             "$db dB",
-                            color = Muted,
+                            color = Sonora.colors.textSecondary,
                             style = MaterialTheme.typography.labelSmall,
                             modifier = Modifier.width(60.dp)
                         )
@@ -1316,7 +1334,7 @@ private fun EqualizerSheet(connection: PlayerConnection, onDismiss: () -> Unit) 
 
                 if (state.bassSupported) {
                     Spacer(Modifier.height(8.dp))
-                    Text("Bass boost", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text("Bass boost", color = Sonora.colors.text, fontWeight = FontWeight.SemiBold)
                     Slider(
                         value = state.bass.toFloat(),
                         onValueChange = { connection.setBass(it.roundToInt()) },
@@ -1406,7 +1424,7 @@ internal fun Artwork(song: Song?, size: Dp, corner: Dp = 12.dp) {
         modifier = Modifier
             .size(size)
             .clip(RoundedCornerShape(corner))
-            .background(Color.White.copy(alpha = 0.08f)),
+            .background(Sonora.colors.card),
         contentAlignment = Alignment.Center
     ) {
         val image = bitmap
@@ -1418,7 +1436,7 @@ internal fun Artwork(song: Song?, size: Dp, corner: Dp = 12.dp) {
                 modifier = Modifier.fillMaxSize()
             )
         } else {
-            Icon(Icons.Default.MusicNote, contentDescription = null, tint = Accent)
+            Icon(Icons.Default.MusicNote, contentDescription = null, tint = Sonora.colors.accent)
         }
     }
 }

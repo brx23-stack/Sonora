@@ -168,7 +168,7 @@ internal fun VisualizerCard(
                 },
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = theme.backgroundBottom,
-                    checkedTrackColor = theme.accent
+                    checkedTrackColor = SpotifyGreenBright
                 ),
                 modifier = Modifier.semantics { contentDescription = "Visualizer on or off" }
             )

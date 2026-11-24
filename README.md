@@ -18,6 +18,7 @@ An Android-first, offline-capable local music player starter project. The projec
 - **Native playback of Opus, M4A/AAC, OGG, FLAC, WAV and MP3** (including voice notes and recordings)
 - **Convert to MP3** (128–320 kbps) from your library or any picked file; results are saved to `Music/Sonora`
 - **Immersive Now Playing**: big cover art on top; scroll down for the player controls, the visualizer and a lyrics card
+- **Light, dark and system themes** with a green-on-grey look: signature green (#1DB954 / #1ED760) for active controls and buttons, #121212 screens with #181818 cards and #282828 bars in dark mode, and white screens in light mode. Choose it with the appearance button at the top of the library. The full-screen player stays dark and takes its colours from the album art
 - **Artwork themes**: the Now Playing background, glows and accent colours are taken from the current album art and fade smoothly when the track changes. Text and accent colours are kept at WCAG AA contrast (4.5:1); tracks without artwork use a built-in indigo theme
 - **Real-time audio visualizer**: spectrum bars, waveform or circular style, driven by the audio that is actually playing (no microphone permission). Switch it on or off and pick the style on the Now Playing screen; it only runs while visible and playing
 - **Live lyrics**: synchronized, scrolling lyrics (tap a line to jump to it). Look them up once online (LRCLIB) or import a `.lrc` file; they are stored on the phone and work offline
